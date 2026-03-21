@@ -56,5 +56,7 @@ jobs:
       - name: Lockfile registry validation
         run: npx lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --allowed-schemes "https:"
 
-      - name: Publish (Trusted Publishing via OIDC)
-        run: npm publish --access public --provenance
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
