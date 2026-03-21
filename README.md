@@ -1,38 +1,26 @@
 # cf-monitor
 
-Self-contained Cloudflare account monitoring. One worker per account.
+**Self-contained Cloudflare account monitoring. One worker. Zero migrations.**
 
-Error collection, feature budgets, circuit breakers, cost protection — with zero D1 dependencies.
+Error collection, feature budgets, circuit breakers, cost protection — with zero D1 dependencies and a single `monitor()` export.
 
-> **Status:** Early development (v0.1.0). Core SDK and monitor worker are scaffolded. See [open issues](https://github.com/littlebearapps/cf-monitor/issues) for work in progress.
+[![npm](https://img.shields.io/npm/v/@littlebearapps/cf-monitor)](https://www.npmjs.com/package/@littlebearapps/cf-monitor)
+[![licence](https://img.shields.io/npm/l/@littlebearapps/cf-monitor)](./LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/littlebearapps/cf-monitor/ci.yml?label=tests)](https://github.com/littlebearapps/cf-monitor/actions)
 
-## Why
+[Quick Start](#quick-start) · [Features](#features) · [SDK API](#sdk-api) · [CLI](#cli-commands) · [Docs](./docs/) · [Contributing](./CONTRIBUTING.md)
 
-Traditional monitoring SDKs require a central account to collect and process telemetry. `cf-monitor` is different: install it on any Cloudflare account, and it monitors everything on **that account only**. No central infrastructure, no cross-account HMAC, no complex forwarding.
+---
 
-Born from real-world pain: a centralised monitoring architecture that broke when projects moved to dedicated Cloudflare accounts. cf-monitor fixes this by making each account fully self-contained.
+## Why cf-monitor?
 
-## Features
+Traditional monitoring SDKs need a central account, cross-account forwarding, HMAC secrets, and a fleet of workers to process telemetry. cf-monitor is different.
 
-| Feature | Description |
-|---------|-------------|
-| **Error Collection** | Tail worker captures errors from all workers, deduplicates via fingerprinting, creates GitHub issues with priority labels (P0-P4) |
-| **Feature Budgets** | Per-feature daily/monthly resource limits with automatic circuit breakers at 100%, warnings at 70%/90% |
-| **Circuit Breakers** | Three-tier kill switches: feature-level, account-level, and global emergency stop — all via KV |
-| **Cost Protection** | Per-invocation resource limits prevent runaway loops. Catches the bug before it becomes a $5K billing incident |
-| **Gap Detection** | Identifies workers on the account that aren't sending telemetry — shows where monitoring coverage is missing |
-| **Worker Discovery** | Auto-discovers all workers on the account via CF API. No manual registry needed |
-| **Slack Alerts** | Budget warnings, error notifications, gap alerts — all with KV-based deduplication |
-| **Analytics Engine** | All metrics stored in AE: 90-day retention, SQL queries, 100M writes/month free tier |
-| **Auto-Detection** | Worker name, feature IDs, bindings, and budget defaults are all detected automatically |
-
-### Optional (AI-powered, disabled by default)
-
-| Feature | Description |
-|---------|-------------|
-| Pattern Discovery | AI-assisted detection of new transient error patterns from unclassified errors |
-| Health Reports | Natural language account health summaries posted to Slack |
-| Coverage Auditor | AI scoring of how well cf-monitor is integrated across each worker |
+- **One worker per account** — install on any Cloudflare account and it monitors everything on that account. No central infrastructure, no cross-account complexity.
+- **Zero D1, zero queues** — all metrics go to Analytics Engine (100M writes/month free). State lives in a single KV namespace. No database migrations, ever.
+- **Three commands to production** — `init`, `deploy`, `wire`. Your workers are monitored in minutes, not hours.
+- **Fail-open by default** — if cf-monitor has an internal error, your worker keeps running normally. Monitoring never becomes the problem.
+- **Born from a $4,868 bill** — an infinite D1 write loop produced 4.8 billion rows before anyone noticed. cf-monitor's per-invocation limits and circuit breakers exist so that never happens again.
 
 ## Quick Start
 
@@ -45,13 +33,13 @@ npm install @littlebearapps/cf-monitor
 ### 2. Set up the monitor worker
 
 ```bash
-# Provision KV namespace + AE dataset, generate config files
+# Provision KV + AE, generate config files
 npx cf-monitor init --account-id YOUR_ACCOUNT_ID
 
-# Deploy the single monitor worker (tail consumer + crons + API)
+# Deploy the single monitor worker
 npx cf-monitor deploy
 
-# Auto-wire tail_consumers + bindings to all other worker configs
+# Auto-wire tail_consumers + bindings to all your worker configs
 npx cf-monitor wire --apply
 ```
 
@@ -73,27 +61,33 @@ export default monitor({
 
 That's it. Worker name, feature IDs, bindings, and budgets are all auto-detected.
 
-### 4. Add bindings to your worker's wrangler config
+## Features
 
-```jsonc
-{
-  "kv_namespaces": [
-    { "binding": "CF_MONITOR_KV", "id": "YOUR_KV_ID" }
-  ],
-  "analytics_engine_datasets": [
-    { "binding": "CF_MONITOR_AE", "dataset": "cf-monitor" }
-  ],
-  "tail_consumers": [
-    { "service": "cf-monitor" }
-  ]
-}
-```
+### Core
 
-Or let the CLI handle it: `npx cf-monitor wire --apply` adds these to all your wrangler configs automatically.
+| Feature | What it does for you |
+|---------|---------------------|
+| **Error Collection** | Tail worker captures errors from all workers on the account, deduplicates via fingerprinting, and creates GitHub issues with priority labels (P0-P4). You find out about errors in seconds, not days. |
+| **Feature Budgets** | Per-feature daily and monthly resource limits with automatic circuit breakers. Set a budget, get warned at 70% and 90%, and the feature stops at 100% before it costs you money. |
+| **Circuit Breakers** | Three-tier kill switches — feature-level, account-level, and global emergency stop — all via KV. Reset automatically after a configurable TTL. |
+| **Cost Protection** | Per-invocation resource limits prevent runaway loops. Catches the bug that would become a $5K billing incident and stops it on the first request. |
+| **Gap Detection** | Identifies workers on the account that aren't sending telemetry. Shows you where monitoring coverage is missing so nothing falls through the cracks. |
+| **Worker Discovery** | Auto-discovers all workers on the account via the Cloudflare API. No manual registry — add a new worker and cf-monitor finds it. |
+| **Slack Alerts** | Budget warnings, error notifications, gap alerts, and cost spike alerts — all with KV-based deduplication so you don't get spammed. |
+| **Cost Spike Detection** | Flags when hourly costs exceed 200% of the 24-hour baseline. Catches anomalies before they become expensive. |
+| **Synthetic Health Checks** | Hourly CB pipeline validation: trip a test breaker, verify it blocks, reset it, verify it passes. Proves your safety net works. |
+
+### Optional (AI-powered, disabled by default)
+
+| Feature | What it does for you |
+|---------|---------------------|
+| **Pattern Discovery** | AI-assisted detection of new transient error patterns from unclassified errors |
+| **Health Reports** | Natural language account health summaries posted to Slack |
+| **Coverage Auditor** | AI scoring of how well cf-monitor is integrated across each worker |
 
 ## SDK API
 
-### Zero-config (most users)
+### Zero-config (most workers)
 
 ```typescript
 import { monitor } from '@littlebearapps/cf-monitor';
@@ -105,21 +99,21 @@ export default monitor({
 });
 ```
 
-### With custom feature IDs
+### Custom feature IDs
 
 ```typescript
 export default monitor({
   features: {
-    'POST /api/scan': 'scanner:social',      // Custom route feature
-    'GET /health': false,                     // Exclude from tracking
-    '0 2 * * *': 'cron:arxiv-harvest',       // Custom cron feature
+    'POST /api/scan': 'scanner:social',       // Custom route feature
+    'GET /health': false,                      // Exclude from tracking
+    '0 2 * * *': 'cron:arxiv-harvest',        // Custom cron feature
   },
   fetch: handler,
   scheduled: cronHandler,
 });
 ```
 
-### With per-invocation limits
+### Per-invocation limits
 
 ```typescript
 export default monitor({
@@ -136,75 +130,85 @@ export default monitor({
 
 ### What `monitor()` auto-detects
 
-| Setting | How | Manual alternative |
-|---------|-----|--------------------|
-| Worker name | `env.WORKER_NAME` (CF runtime) | — |
-| Feature IDs | `{worker}:{handler}:{path-slug}` | `features` map |
-| Bindings | Duck-typing at runtime | — |
-| Budget defaults | Based on CF plan (free/paid) | `budgets` in config |
-| Tail consumers | CLI `wire` command | Manual wrangler edit |
+| Setting | How it works | Manual override |
+|---------|-------------|-----------------|
+| Worker name | `config.workerName` > `env.WORKER_NAME` > `env.name` > `'worker'` | `workerName` option or `wire --apply` |
+| Feature IDs | `{worker}:{handler}:{method}:{path-slug}` | `featureId`, `featurePrefix`, or `features` map |
+| Bindings | Duck-typing at runtime (D1, KV, R2, AI, Queue, DO, Vectorize, Workflow) | — |
+| Budget defaults | Based on CF plan (free/paid) | `budgets` in config or `config sync` CLI |
+| Health endpoint | `/_monitor/health` | `healthEndpoint` option or `false` to disable |
 
 ## Architecture
 
 ```
-                    ┌─────────────────────────────────┐
-                    │      cf-monitor worker           │
-Your Workers ─tail─>│  tail()  → fingerprint → GitHub │─> Issues
-    │               │  cron()  → metrics, budgets,     │─> Slack
-    │               │            gaps, discovery       │
-    │               │  fetch() → /status, /errors,     │
-    │               │            /budgets, /workers     │
-    │               └─────────────────────────────────┘
-    │                              │
-    └──── AE write ──> Analytics Engine <── AE SQL query
+                    +-----------------------------------------+
+                    |          cf-monitor worker               |
+Your Workers -tail->|  tail()  -> fingerprint -> GitHub Issues |-> Issues
+    |               |  cron()  -> metrics, budgets,            |-> Slack
+    |               |             gaps, spikes, discovery      |
+    |               |  fetch() -> /status, /errors,            |
+    |               |             /budgets, /workers            |
+    |               +-----------------------------------------+
+    |                              |
+    +---- AE write --> Analytics Engine <-- AE SQL query
 ```
 
-**One worker handles everything:**
+### One worker handles everything
 
 | Handler | Schedule | Purpose |
 |---------|----------|---------|
 | `tail()` | Real-time | Error capture from all tailed workers |
-| `scheduled()` | `*/15 * * * *` | Gap detection |
+| `scheduled()` | `*/15 * * * *` | Gap detection, cost spike detection |
 | `scheduled()` | `0 * * * *` | CF GraphQL metrics, budget enforcement, synthetic CB health |
-| `scheduled()` | `0 0 * * *` | Daily rollup, worker discovery |
-| `fetch()` | On-demand | Status API endpoints |
+| `scheduled()` | `0 0 * * *` | Daily rollup + warning digest, worker discovery |
+| `fetch()` | On-demand | Status API, admin endpoints, GitHub webhooks |
 
-## Storage
-
-**Zero D1.** Everything uses Analytics Engine + KV.
+### Storage — zero D1
 
 | Store | Purpose | Cost |
 |-------|---------|------|
-| **Analytics Engine** | All metrics and telemetry (90-day retention) | 100M writes/month free |
+| **Analytics Engine** | All metrics and telemetry (90-day retention, SQL queries) | 100M writes/month free |
 | **KV** (1 namespace) | Circuit breaker state, budget config, error dedup, worker registry | Reads: $0.50/M, Writes: $5/M |
 
-### KV Key Prefixes
+### Bindings tracked
 
-| Prefix | Purpose | TTL |
-|--------|---------|-----|
-| `cb:v1:feature:` | Circuit breaker state per feature | Auto-reset (default 1hr) |
-| `cb:v1:account` | Account-level CB | 24hr |
-| `budget:config:` | Feature budget limits | None |
-| `budget:usage:daily:` | Daily usage counters | 25hr |
-| `err:fp:` | Error fingerprint → GitHub issue URL | 90 days |
-| `err:rate:` | Per-script error rate limit | 2hr |
-| `workers:` | Auto-discovered worker registry | 25hr |
+D1 (reads, writes, rows) · KV (reads, writes, deletes, lists) · R2 (Class A, Class B) · Workers AI (requests, neurons) · Vectorize (queries, inserts) · Queue (messages) · Durable Objects (requests) · Workflows (invocations)
 
 ## CLI Commands
 
-| Command | Purpose |
-|---------|---------|
-| `npx cf-monitor init` | Provision KV + AE, generate config and wrangler.jsonc |
-| `npx cf-monitor deploy` | Deploy the cf-monitor worker |
-| `npx cf-monitor wire [--apply]` | Auto-add tail_consumers + bindings to all worker configs |
-| `npx cf-monitor status` | Show monitor health, CB states, worker count |
-| `npx cf-monitor coverage` | Show which workers are/aren't monitored |
-| `npx cf-monitor upgrade` | Safe npm update + re-deploy with rollback |
-| `npx cf-monitor config sync` | Push budgets from YAML to KV |
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `npx cf-monitor init` | Provision KV + AE, generate config | `--account-id`, `--github-repo`, `--slack-webhook` |
+| `npx cf-monitor deploy` | Deploy the cf-monitor worker | `--dry-run` |
+| `npx cf-monitor wire` | Auto-add tail_consumers + bindings to all worker configs | `--apply`, `--dir` |
+| `npx cf-monitor status` | Show monitor health and CB states | `--json` |
+| `npx cf-monitor coverage` | Show which workers are/aren't monitored | `--json` |
+| `npx cf-monitor secret` | Set a secret on the cf-monitor worker | `[name]` |
+| `npx cf-monitor config sync` | Push budgets from YAML to KV | — |
+| `npx cf-monitor config validate` | Validate cf-monitor.yaml against schema | — |
+| `npx cf-monitor upgrade` | Safe npm update + re-deploy | `--dry-run` |
+| `npx cf-monitor migrate` | Migrate from platform-consumer-sdk | `--from` |
+
+## API Endpoints
+
+The monitor worker exposes these endpoints:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/_health` | Health check (for Gatus or uptime monitors) |
+| GET | `/status` | Account health, CB states, worker count |
+| GET | `/errors` | Recent error fingerprints with GitHub issue links |
+| GET | `/budgets` | Active circuit breakers and budget utilisation |
+| GET | `/workers` | Auto-discovered workers on the account |
+| POST | `/webhooks/github` | GitHub webhook receiver (issue close/reopen/mute sync) |
+| POST | `/admin/cron/{name}` | Manually trigger any cron (for testing) |
+| POST | `/admin/cb/trip` | Trip a feature circuit breaker |
+| POST | `/admin/cb/reset` | Reset a feature circuit breaker |
+| POST | `/admin/cb/account` | Set account-level CB status |
 
 ## Configuration
 
-Generated by `npx cf-monitor init`:
+Generated by `npx cf-monitor init` — see [full reference](./docs/configuration.md).
 
 ```yaml
 # cf-monitor.yaml
@@ -219,7 +223,7 @@ github:
 alerts:
   slack_webhook: $SLACK_WEBHOOK_URL
 
-# Optional — sensible defaults auto-calculated from CF plan
+# Optional — sensible defaults auto-calculated from your CF plan
 # budgets:
 #   daily:
 #     d1_writes: 50000
@@ -250,7 +254,7 @@ alerts:
 ## Migrating from platform-consumer-sdk
 
 ```typescript
-// Before
+// Before (platform-consumer-sdk)
 import { platformWorker } from '@littlebearapps/platform-consumer-sdk/worker';
 export default platformWorker({
   project: 'scout',
@@ -261,7 +265,7 @@ export default platformWorker({
   scheduled: cronHandler,
 });
 
-// After
+// After (cf-monitor)
 import { monitor } from '@littlebearapps/cf-monitor';
 export default monitor({
   limits: { d1Writes: 500 },
@@ -271,22 +275,35 @@ export default monitor({
 ```
 
 Wrangler binding changes:
-- `PLATFORM_CACHE` (KV) → `CF_MONITOR_KV`
-- `PLATFORM_ANALYTICS` (AE) → `CF_MONITOR_AE`
+- `PLATFORM_CACHE` (KV) -> `CF_MONITOR_KV`
+- `PLATFORM_ANALYTICS` (AE) -> `CF_MONITOR_AE`
 - Remove `PLATFORM_TELEMETRY` (Queue) — no longer needed
+
+Or use the CLI: `npx cf-monitor migrate --from platform-consumer-sdk`
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](./docs/getting-started.md) | Step-by-step from install to verified monitoring |
+| [Configuration Reference](./docs/configuration.md) | Complete cf-monitor.yaml and SDK options reference |
+| [Error Collection](./docs/guides/error-collection.md) | How fingerprinting, dedup, and GitHub issues work |
+| [Budgets & Circuit Breakers](./docs/guides/budgets-and-circuit-breakers.md) | Per-invocation limits, daily/monthly budgets, CB mechanics |
+| [Cost Protection](./docs/guides/cost-protection.md) | The $4,868 story and how cf-monitor prevents it |
+| [Troubleshooting](./docs/troubleshooting.md) | Common issues and their solutions |
 
 ## Contributing
 
-Issues and PRs welcome. See [open issues](https://github.com/littlebearapps/cf-monitor/issues) for planned work.
+Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup and guidelines.
 
 ```bash
 git clone https://github.com/littlebearapps/cf-monitor.git
 cd cf-monitor
 npm install
-npm test
-npm run typecheck
+npm test          # 222 unit tests
+npm run typecheck # TypeScript strict mode
 ```
 
 ## Licence
 
-MIT
+MIT — Made by [Little Bear Apps](https://littlebearapps.com)
