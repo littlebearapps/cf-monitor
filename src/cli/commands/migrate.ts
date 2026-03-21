@@ -1,0 +1,154 @@
+import pc from 'picocolors';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+
+interface MigrateOptions {
+	from?: string;
+}
+
+export async function migrateCommand(options: MigrateOptions): Promise<void> {
+	console.log(pc.bold('\ncf-monitor migrate\n'));
+
+	const source = options.from ?? 'platform-sdk';
+	if (source !== 'platform-sdk') {
+		console.error(pc.red(`  Unknown migration source: ${source}`));
+		console.log(`  Supported: ${pc.cyan('--from platform-sdk')}`);
+		process.exit(1);
+	}
+
+	console.log(`  Migrating from: ${pc.cyan('@littlebearapps/platform-consumer-sdk')}\n`);
+
+	const featureMap: Record<string, string> = {};
+	const budgets: Record<string, Record<string, number>> = {};
+
+	// Try to read platform-agent manifest
+	const manifestPath = '.platform-agent.json';
+	if (existsSync(manifestPath)) {
+		console.log(`  ${pc.green('✓')} Found ${manifestPath}`);
+		try {
+			const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
+				project?: string;
+				features?: Record<string, unknown>;
+			};
+			if (manifest.project) {
+				console.log(`    Project: ${manifest.project}`);
+			}
+		} catch (err) {
+			console.log(`  ${pc.yellow('⚠')} Could not parse ${manifestPath}: ${err}`);
+		}
+	} else {
+		console.log(`  ${pc.dim('○')} No ${manifestPath} found`);
+	}
+
+	// Try to read services.yaml for feature definitions
+	const servicesPath = 'platform/config/services.yaml';
+	if (existsSync(servicesPath)) {
+		console.log(`  ${pc.green('✓')} Found ${servicesPath}`);
+		try {
+			const content = readFileSync(servicesPath, 'utf-8');
+			// Extract feature IDs (lines like "  - project:category:name")
+			const featureLines = content.match(/^\s+-\s+([a-z][a-z0-9-]*:[a-z][a-z0-9-]*:[a-zA-Z0-9_-]+)/gm) ?? [];
+			for (const line of featureLines) {
+				const match = line.match(/([a-z][a-z0-9-]*:[a-z][a-z0-9-]*:[a-zA-Z0-9_-]+)/);
+				if (match) {
+					const oldId = match[1];
+					// Convert project:category:name → worker:handler:slug
+					const parts = oldId.split(':');
+					const newId = parts.join(':'); // Keep as-is for now — manual review needed
+					featureMap[oldId] = newId;
+				}
+			}
+			console.log(`    Features extracted: ${Object.keys(featureMap).length}`);
+		} catch (err) {
+			console.log(`  ${pc.yellow('⚠')} Could not parse ${servicesPath}: ${err}`);
+		}
+	} else {
+		console.log(`  ${pc.dim('○')} No ${servicesPath} found`);
+	}
+
+	// Try to read budgets.yaml
+	const budgetsPath = 'platform/config/budgets.yaml';
+	if (existsSync(budgetsPath)) {
+		console.log(`  ${pc.green('✓')} Found ${budgetsPath}`);
+		try {
+			const content = readFileSync(budgetsPath, 'utf-8');
+			// Extract budget values (simplified)
+			const budgetMatches = content.match(/^\s+(\w+):\s*(\d[\d_]*)/gm) ?? [];
+			const defaultBudget: Record<string, number> = {};
+			for (const match of budgetMatches) {
+				const parts = match.trim().match(/(\w+):\s*(\d[\d_]*)/);
+				if (parts) {
+					defaultBudget[parts[1]] = parseInt(parts[2].replace(/_/g, ''), 10);
+				}
+			}
+			if (Object.keys(defaultBudget).length > 0) {
+				budgets.__default__ = defaultBudget;
+			}
+			console.log(`    Budget metrics extracted: ${Object.keys(defaultBudget).length}`);
+		} catch (err) {
+			console.log(`  ${pc.yellow('⚠')} Could not parse ${budgetsPath}: ${err}`);
+		}
+	} else {
+		console.log(`  ${pc.dim('○')} No ${budgetsPath} found`);
+	}
+
+	// Generate migration mapping file
+	if (Object.keys(featureMap).length > 0) {
+		const mappingPath = 'cf-monitor-migration.json';
+		writeFileSync(mappingPath, JSON.stringify(featureMap, null, 2));
+		console.log(`\n  ${pc.green('✓')} Feature mapping written to ${pc.cyan(mappingPath)}`);
+	}
+
+	// Generate cf-monitor.yaml template
+	const yamlContent = generateMigrationConfig(budgets);
+	const configPath = 'cf-monitor.yaml';
+	if (!existsSync(configPath)) {
+		writeFileSync(configPath, yamlContent);
+		console.log(`  ${pc.green('✓')} Generated ${pc.cyan(configPath)}`);
+	} else {
+		console.log(`  ${pc.yellow('⚠')} ${configPath} already exists — skipped`);
+	}
+
+	// Summary
+	console.log(pc.bold('\n  Migration Summary\n'));
+	console.log(`  Features mapped: ${Object.keys(featureMap).length}`);
+	console.log(`  Budget metrics: ${Object.values(budgets).reduce((s, b) => s + Object.keys(b).length, 0)}`);
+	console.log('');
+	console.log(pc.yellow('  Next steps:'));
+	console.log(`    1. Review ${pc.cyan('cf-monitor.yaml')} and update account details`);
+	console.log(`    2. Run ${pc.cyan('npx cf-monitor init --account-id <ID> --api-token <TOKEN>')}`);
+	console.log(`    3. Run ${pc.cyan('npx cf-monitor deploy')}`);
+	console.log(`    4. Replace ${pc.cyan("import { platformWorker } from '@littlebearapps/platform-consumer-sdk/worker'")}`);
+	console.log(`       with ${pc.cyan("import { monitor } from '@littlebearapps/cf-monitor'")}`);
+	console.log('');
+}
+
+function generateMigrationConfig(budgets: Record<string, Record<string, number>>): string {
+	const lines = [
+		'# cf-monitor.yaml — generated by migration from platform-consumer-sdk',
+		'# yaml-language-server: $schema=./cf-monitor.schema.json',
+		'',
+		'account:',
+		'  name: my-account  # TODO: update with your account name',
+		'  cloudflare_account_id: $CLOUDFLARE_ACCOUNT_ID',
+		'',
+		'github:',
+		'  repo: owner/repo  # TODO: update with your repo',
+		'  token: $GITHUB_TOKEN',
+		'',
+		'alerts:',
+		'  slack_webhook_url: $SLACK_WEBHOOK_URL',
+		'',
+	];
+
+	if (Object.keys(budgets).length > 0) {
+		lines.push('budgets:');
+		lines.push('  daily:');
+		const defaults = budgets.__default__ ?? {};
+		for (const [metric, value] of Object.entries(defaults)) {
+			lines.push(`    ${metric}: ${value}`);
+		}
+		lines.push('');
+	}
+
+	return lines.join('\n');
+}

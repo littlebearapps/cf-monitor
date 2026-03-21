@@ -19,6 +19,10 @@ import { deployCommand } from './commands/deploy.js';
 import { wireCommand } from './commands/wire.js';
 import { statusCommand } from './commands/status.js';
 import { coverageCommand } from './commands/coverage.js';
+import { secretSetCommand } from './commands/secret.js';
+import { configSyncCommand } from './commands/config-sync.js';
+import { upgradeCommand } from './commands/upgrade.js';
+import { migrateCommand } from './commands/migrate.js';
 
 const program = new Command();
 
@@ -60,5 +64,37 @@ program
 	.description('Show monitoring coverage for account workers')
 	.option('--json', 'Output as JSON')
 	.action(coverageCommand);
+
+program
+	.command('secret')
+	.description('Set a secret on the cf-monitor worker')
+	.argument('[name]', 'Secret name (e.g. GITHUB_TOKEN)')
+	.action(secretSetCommand);
+
+const configCmd = program
+	.command('config')
+	.description('Configuration management');
+
+configCmd
+	.command('sync')
+	.description('Push budgets from cf-monitor.yaml to KV')
+	.action(() => configSyncCommand({}));
+
+configCmd
+	.command('validate')
+	.description('Validate cf-monitor.yaml against schema')
+	.action(() => configSyncCommand({ validate: true }));
+
+program
+	.command('upgrade')
+	.description('Update cf-monitor and re-deploy')
+	.option('--dry-run', 'Show what would change without upgrading')
+	.action(upgradeCommand);
+
+program
+	.command('migrate')
+	.description('Migrate from platform-consumer-sdk')
+	.option('--from <source>', 'Migration source', 'platform-sdk')
+	.action(migrateCommand);
 
 program.parse();
