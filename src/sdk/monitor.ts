@@ -290,6 +290,19 @@ async function flushTelemetry<Env extends object>(trackedEnv: TrackedEnv<Env>): 
 		// Compute cpuMs as elapsed time (approximation — real CPU time not available)
 		metrics.cpuMs = Date.now() - trackedEnv[TRACKED_ENV_SYMBOL].startTime;
 
+		// Write last_seen timestamp for gap detection (#19)
+		// Done before isZero check — a worker handling requests should always update its heartbeat
+		const kv = (trackedEnv as unknown as Record<string, unknown>)[MONITOR_BINDINGS.KV] as
+			| KVNamespace
+			| undefined;
+		if (kv) {
+			await kv.put(
+				`${KV.WORKER_REGISTRY}${workerName}:last_seen`,
+				new Date().toISOString(),
+				{ expirationTtl: 90000 } // 25hr TTL — auto-expire stale entries
+			);
+		}
+
 		if (isZero(metrics)) return;
 
 		const ae = (trackedEnv as unknown as Record<string, unknown>)[MONITOR_BINDINGS.AE] as

@@ -247,6 +247,37 @@ describe('monitor() features map', () => {
 	});
 });
 
+describe('monitor() last_seen KV write (#19)', () => {
+	it('writes workers:{name}:last_seen to KV on telemetry flush', async () => {
+		const worker = monitor({
+			fetch: async (_req, e) => {
+				await (e as any).DB.prepare('SELECT 1').first();
+				return new Response('ok');
+			},
+		});
+
+		await worker.fetch!(createRequest('/api/test'), env as any, ctx);
+		await ctx._flush();
+
+		const lastSeen = await env.CF_MONITOR_KV.get('workers:test-worker:last_seen');
+		expect(lastSeen).not.toBeNull();
+		// Should be a valid ISO date
+		expect(new Date(lastSeen!).getTime()).not.toBeNaN();
+	});
+
+	it('writes last_seen even when no bindings are used (heartbeat always fires)', async () => {
+		const worker = monitor({
+			fetch: async () => new Response('ok'), // no binding usage
+		});
+
+		await worker.fetch!(createRequest('/api/test'), env as any, ctx);
+		await ctx._flush();
+
+		const lastSeen = await env.CF_MONITOR_KV.get('workers:test-worker:last_seen');
+		expect(lastSeen).not.toBeNull();
+	});
+});
+
 describe('monitor() budget accumulation (#25)', () => {
 	it('flushTelemetry writes daily KV counters after AE write', async () => {
 		const worker = monitor({
