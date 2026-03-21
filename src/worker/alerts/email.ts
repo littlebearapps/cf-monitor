@@ -1,0 +1,161 @@
+import { KV } from '../../constants.js';
+import type { MonitorWorkerEnv } from '../../types.js';
+
+/**
+ * Email alert providers.
+ * All send via HTTP POST to their respective APIs.
+ */
+
+interface EmailConfig {
+	to: string;
+	provider: 'resend' | 'sendgrid' | 'generic';
+	apiKey: string;
+	from?: string;
+}
+
+/**
+ * Send an email alert with deduplication.
+ *
+ * @param env - Monitor worker environment
+ * @param config - Email configuration
+ * @param dedupKey - Dedup key (reuses budget:warn: prefix)
+ * @param dedupTtl - TTL in seconds for dedup
+ * @param subject - Email subject
+ * @param body - Email body (HTML)
+ */
+export async function sendEmailAlert(
+	env: MonitorWorkerEnv,
+	config: EmailConfig,
+	dedupKey: string,
+	dedupTtl: number,
+	subject: string,
+	body: string
+): Promise<boolean> {
+	// Dedup check (same KV prefix as Slack)
+	const kvKey = `${KV.BUDGET_WARN}email:${dedupKey}`;
+	const existing = await env.CF_MONITOR_KV.get(kvKey);
+	if (existing) return false;
+
+	try {
+		let success = false;
+
+		switch (config.provider) {
+			case 'resend':
+				success = await sendViaResend(config, subject, body);
+				break;
+			case 'sendgrid':
+				success = await sendViaSendGrid(config, subject, body);
+				break;
+			case 'generic':
+				success = await sendViaGenericWebhook(config, subject, body);
+				break;
+		}
+
+		if (success) {
+			await env.CF_MONITOR_KV.put(kvKey, '1', { expirationTtl: dedupTtl });
+		}
+
+		return success;
+	} catch (err) {
+		console.error(`[cf-monitor:email] Alert error: ${err}`);
+		return false;
+	}
+}
+
+/** Send via Resend API (https://resend.com/docs/api-reference/emails/send-email). */
+async function sendViaResend(config: EmailConfig, subject: string, body: string): Promise<boolean> {
+	const response = await fetch('https://api.resend.com/emails', {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${config.apiKey}`,
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({
+			from: config.from ?? 'cf-monitor <alerts@cf-monitor.dev>',
+			to: [config.to],
+			subject,
+			html: body,
+		}),
+	});
+
+	if (!response.ok) {
+		console.error(`[cf-monitor:email] Resend failed (${response.status})`);
+		return false;
+	}
+	return true;
+}
+
+/** Send via SendGrid v3 API. */
+async function sendViaSendGrid(config: EmailConfig, subject: string, body: string): Promise<boolean> {
+	const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${config.apiKey}`,
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({
+			personalizations: [{ to: [{ email: config.to }] }],
+			from: { email: config.from ?? 'alerts@cf-monitor.dev' },
+			subject,
+			content: [{ type: 'text/html', value: body }],
+		}),
+	});
+
+	if (!response.ok) {
+		console.error(`[cf-monitor:email] SendGrid failed (${response.status})`);
+		return false;
+	}
+	return true;
+}
+
+/** Send via generic webhook (POST with JSON body). */
+async function sendViaGenericWebhook(config: EmailConfig, subject: string, body: string): Promise<boolean> {
+	// Generic webhook sends to the API key URL (which is the webhook endpoint)
+	const response = await fetch(config.apiKey, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			to: config.to,
+			from: config.from ?? 'alerts@cf-monitor.dev',
+			subject,
+			html: body,
+		}),
+	});
+
+	if (!response.ok) {
+		console.error(`[cf-monitor:email] Generic webhook failed (${response.status})`);
+		return false;
+	}
+	return true;
+}
+
+/**
+ * Format a budget alert as HTML email.
+ */
+export function formatBudgetEmail(
+	accountName: string,
+	featureId: string,
+	metric: string,
+	current: number,
+	limit: number,
+	pct: number
+): { subject: string; body: string } {
+	const severity = pct >= 90 ? 'CRITICAL' : 'WARNING';
+	const color = pct >= 90 ? '#e74c3c' : '#f39c12';
+
+	return {
+		subject: `[cf-monitor] ${severity}: ${accountName} — ${metric} at ${pct.toFixed(0)}%`,
+		body: `
+			<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px;">
+				<h2 style="color: ${color};">${severity}: Budget Alert</h2>
+				<table style="border-collapse: collapse; width: 100%;">
+					<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Account</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${accountName}</td></tr>
+					<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Feature</strong></td><td style="padding: 8px; border: 1px solid #ddd;"><code>${featureId}</code></td></tr>
+					<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Metric</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${metric}</td></tr>
+					<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Usage</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${current.toLocaleString()} / ${limit.toLocaleString()} (${pct.toFixed(1)}%)</td></tr>
+				</table>
+				<p style="color: #666; font-size: 12px; margin-top: 16px;">Generated by <a href="https://github.com/littlebearapps/cf-monitor">cf-monitor</a></p>
+			</div>
+		`.trim(),
+	};
+}
