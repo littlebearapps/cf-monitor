@@ -70,6 +70,24 @@ export const KV = {
 } as const;
 
 // =============================================================================
+// METRICS → BUDGET KEY MAPPING
+// =============================================================================
+
+/** Maps MetricsAccumulator field names to BudgetMetric keys for KV storage. */
+export const METRICS_TO_BUDGET: Record<string, string> = {
+	d1Writes: 'd1_writes',
+	d1Reads: 'd1_reads',
+	kvWrites: 'kv_writes',
+	kvReads: 'kv_reads',
+	aiRequests: 'ai_requests',
+	aiNeurons: 'ai_neurons',
+	r2ClassA: 'r2_class_a',
+	r2ClassB: 'r2_class_b',
+	queueMessages: 'queue_messages',
+	vectorizeQueries: 'vectorize_queries',
+};
+
+// =============================================================================
 // BINDING NAMES
 // =============================================================================
 

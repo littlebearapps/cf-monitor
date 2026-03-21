@@ -4,6 +4,7 @@ dist/
 *.tsbuildinfo
 .wrangler/
 .dev.vars
+coverage/
 
 # MCP profiles (generated, not committed)
 .mcp.json

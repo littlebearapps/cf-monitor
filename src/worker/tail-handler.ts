@@ -11,7 +11,7 @@ import { createGitHubIssue } from './errors/github.js';
 export async function handleTailEvents(
 	events: TraceItem[],
 	env: MonitorWorkerEnv,
-	ctx: ExecutionContext
+	_ctx: ExecutionContext
 ): Promise<void> {
 	for (const event of events) {
 		try {

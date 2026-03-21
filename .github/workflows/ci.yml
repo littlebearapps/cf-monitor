@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint & Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check (Workers)
+        run: npx tsc --noEmit
+
+      - name: TypeScript check (CLI)
+        run: npx tsc --noEmit -p tsconfig.cli.json
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Test coverage (enforces thresholds)
+        if: matrix.node-version == 22
+        run: npm run test:coverage
+
+      - name: Build CLI
+        run: npm run build:cli
+
+      - name: CLI smoke test
+        run: node dist/cli/index.js --help
+
+      # -- Package validation (public npm package) --
+
+      - name: Validate package exports (publint)
+        if: matrix.node-version == 22
+        run: npx publint
+
+      - name: Validate type resolution (attw)
+        if: matrix.node-version == 22
+        run: npx @arethetypeswrong/cli --pack . --ignore-rules cjs-resolves-to-esm no-resolution
+        # cjs-resolves-to-esm: expected — ESM-only package, CJS needs dynamic import
+        # no-resolution: expected — ./types sub-export doesn't resolve under node10 (no exports map support)
+
+      - name: Package dry run
+        run: npm pack --dry-run 2>&1 | tee /tmp/pack-output.txt
+
+      - name: Verify package contents
+        run: |
+          # Fail if tests, .claude, .env, or secrets leak into the package
+          if grep -qE '(tests/|\.claude/|\.env|\.dev\.vars|\.mcp\.)' /tmp/pack-output.txt; then
+            echo "::error::Unwanted files found in package tarball"
+            grep -E '(tests/|\.claude/|\.env|\.dev\.vars|\.mcp\.)' /tmp/pack-output.txt
+            exit 1
+          fi
+
+      - name: Verify package size
+        run: |
+          # Extract package size in kB — fail if over 200kB (catch accidental bloat)
+          SIZE_KB=$(npm pack --dry-run 2>&1 | grep 'package size' | grep -oP '[\d.]+\s*kB' | grep -oP '[\d.]+')
+          echo "Package size: ${SIZE_KB} kB"
+          if [ "$(echo "$SIZE_KB > 200" | bc)" -eq 1 ]; then
+            echo "::error::Package size ${SIZE_KB} kB exceeds 200 kB limit"
+            exit 1
+          fi
+
+      - name: Verify licence
+        run: test -f LICENSE || { echo "::error::LICENSE file missing"; exit 1; }
+
+      # -- Supply chain security --
+
+      - name: Lockfile registry validation
+        if: matrix.node-version == 22
+        run: npx lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --allowed-schemes "https:"
+
+      - name: Security audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  # Dependency review runs only on PRs (needs base..head diff)
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/dependency-review-action@4901385134134e04cec5fbe5ddfe3b2c5bd5d976 # v4
+        with:
+          deny-licenses: GPL-2.0-only, GPL-3.0-only, LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, AGPL-3.0-only

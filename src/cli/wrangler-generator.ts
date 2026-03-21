@@ -4,7 +4,7 @@
 export function generateWranglerConfig(
 	accountId: string,
 	kvNamespaceId: string,
-	isFree: boolean
+	_isFree: boolean
 ): string {
 	const crons = [
 		'*/15 * * * *', // Gap detection

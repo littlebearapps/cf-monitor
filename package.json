@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./src/index.ts",
   "bin": {
-    "cf-monitor": "./dist/cli/index.js"
+    "cf-monitor": "dist/cli/index.js"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -30,7 +30,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/littlebearapps/cf-monitor.git"
+    "url": "git+https://github.com/littlebearapps/cf-monitor.git"
   },
   "homepage": "https://github.com/littlebearapps/cf-monitor#readme",
   "bugs": {

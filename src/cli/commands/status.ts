@@ -4,7 +4,7 @@ interface StatusOptions {
 	json?: boolean;
 }
 
-export async function statusCommand(options: StatusOptions): Promise<void> {
+export async function statusCommand(_options: StatusOptions): Promise<void> {
 	console.log(pc.bold('\ncf-monitor status\n'));
 	console.log(pc.yellow('  Status command requires the cf-monitor worker to be deployed.'));
 	console.log(`  Deploy with: ${pc.cyan('npx cf-monitor deploy')}`);

@@ -1,4 +1,3 @@
-import { KV } from '../../constants.js';
 import type { MonitorWorkerEnv } from '../../types.js';
 import { tripFeatureCb, resetFeatureCb, checkFeatureCb } from '../../sdk/circuit-breaker.js';
 

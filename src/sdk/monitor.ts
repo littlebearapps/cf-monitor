@@ -26,8 +26,8 @@
  * ```
  */
 
-import { MONITOR_BINDINGS } from '../constants.js';
-import { CircuitBreakerError, type MonitorConfig, TRACKED_ENV_SYMBOL } from '../types.js';
+import { KV, METRICS_TO_BUDGET, MONITOR_BINDINGS } from '../constants.js';
+import { CircuitBreakerError, type MetricsAccumulator, type MonitorConfig, TRACKED_ENV_SYMBOL, type TrackedEnv } from '../types.js';
 import { checkAccountCb, checkFeatureCb } from './circuit-breaker.js';
 import { detectWorkerName, generateCronFeatureId, generateFetchFeatureId, generateQueueFeatureId, hasMonitorBindings } from './detection.js';
 import { pingHeartbeat } from './heartbeat.js';
@@ -282,7 +282,7 @@ function resolveFeatureId<Env extends object>(
 	return `${workerName}:${handlerType}:unknown`;
 }
 
-/** Flush accumulated metrics to Analytics Engine. */
+/** Flush accumulated metrics to Analytics Engine and update budget counters. */
 async function flushTelemetry<Env extends object>(trackedEnv: TrackedEnv<Env>): Promise<void> {
 	try {
 		const { metrics, featureId, workerName } = trackedEnv[TRACKED_ENV_SYMBOL];
@@ -303,8 +303,46 @@ async function flushTelemetry<Env extends object>(trackedEnv: TrackedEnv<Env>): 
 			doubles: dp.doubles,
 			indexes: dp.indexes,
 		});
+
+		// Accumulate daily budget usage in KV for budget-check cron
+		await accumulateBudgetUsage(trackedEnv, featureId, metrics);
 	} catch {
 		// Fail silently — never block the user's response
+	}
+}
+
+/** Increment daily KV budget counters for budget enforcement. */
+async function accumulateBudgetUsage<Env extends object>(
+	trackedEnv: TrackedEnv<Env>,
+	featureId: string,
+	metrics: MetricsAccumulator
+): Promise<void> {
+	try {
+		const kv = (trackedEnv as unknown as Record<string, unknown>)[MONITOR_BINDINGS.KV] as
+			| KVNamespace
+			| undefined;
+		if (!kv) return;
+
+		const today = new Date().toISOString().slice(0, 10);
+		const key = `${KV.BUDGET_DAILY}${featureId}:${today}`;
+
+		const currentRaw = await kv.get(key);
+		const current: Record<string, number> = currentRaw ? JSON.parse(currentRaw) : {};
+
+		let changed = false;
+		for (const [metricsKey, budgetKey] of Object.entries(METRICS_TO_BUDGET)) {
+			const value = metrics[metricsKey as keyof MetricsAccumulator] as number;
+			if (value > 0) {
+				current[budgetKey] = (current[budgetKey] ?? 0) + value;
+				changed = true;
+			}
+		}
+
+		if (changed) {
+			await kv.put(key, JSON.stringify(current), { expirationTtl: 90000 }); // 25hr TTL
+		}
+	} catch {
+		// Fail open — budget accumulation is best-effort
 	}
 }
 
@@ -318,7 +356,7 @@ function handleCbResponse<Env extends object>(
 	config: MonitorConfig<Env>,
 	response: Response | null,
 	featureId: string,
-	handler: string
+	_handler: string
 ): Response {
 	if (config.onCircuitBreaker) {
 		const err = new CircuitBreakerError(featureId, 'account', 'Account circuit breaker active');

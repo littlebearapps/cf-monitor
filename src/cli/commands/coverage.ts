@@ -4,7 +4,7 @@ interface CoverageOptions {
 	json?: boolean;
 }
 
-export async function coverageCommand(options: CoverageOptions): Promise<void> {
+export async function coverageCommand(_options: CoverageOptions): Promise<void> {
 	console.log(pc.bold('\ncf-monitor coverage\n'));
 	console.log(pc.yellow('  Coverage command requires the cf-monitor worker to be deployed.'));
 	console.log(`  Deploy with: ${pc.cyan('npx cf-monitor deploy')}`);
