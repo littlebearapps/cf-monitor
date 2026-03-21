@@ -2,6 +2,7 @@ import type { MonitorWorkerEnv } from '../types.js';
 import { collectAccountMetrics } from './crons/collect-metrics.js';
 import { checkBudgets } from './crons/budget-check.js';
 import { detectGaps } from './crons/gap-detection.js';
+import { detectCostSpikes } from './crons/cost-spike.js';
 import { discoverWorkers } from './crons/worker-discovery.js';
 import { runDailyRollup } from './crons/daily-rollup.js';
 import { runSyntheticHealthCheck } from './crons/synthetic-health.js';
@@ -24,7 +25,10 @@ export async function handleScheduled(
 	try {
 		// 15-minute checks
 		if (cron === '*/15 * * * *') {
-			await detectGaps(env);
+			await Promise.allSettled([
+				detectGaps(env),
+				detectCostSpikes(env),
+			]);
 			return;
 		}
 
