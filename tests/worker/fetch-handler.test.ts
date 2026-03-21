@@ -65,9 +65,15 @@ describe('handleFetch', () => {
 		expect(body.count).toBe(2);
 	});
 
-	it('POST returns 405', async () => {
+	it('POST to non-webhook path returns 404', async () => {
 		const env = createMockMonitorWorkerEnv();
 		const resp = await handleFetch(createRequest('/status', 'POST'), env, createMockCtx());
+		expect(resp.status).toBe(404);
+	});
+
+	it('PUT returns 405', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const resp = await handleFetch(createRequest('/status', 'PUT'), env, createMockCtx());
 		expect(resp.status).toBe(405);
 	});
 
@@ -86,5 +92,173 @@ describe('handleFetch', () => {
 		const errorsResp = await handleFetch(createRequest('/errors'), env, createMockCtx());
 		const body = await errorsResp.json() as Record<string, unknown>;
 		expect(body.count).toBe(0);
+	});
+});
+
+describe('GitHub webhook (#22)', () => {
+	const webhookSecret = 'test-secret-123';
+
+	async function computeSignature(body: string, secret: string): Promise<string> {
+		const encoder = new TextEncoder();
+		const key = await crypto.subtle.importKey(
+			'raw',
+			encoder.encode(secret),
+			{ name: 'HMAC', hash: 'SHA-256' },
+			false,
+			['sign']
+		);
+		const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
+		return `sha256=${Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+	}
+
+	function createWebhookRequest(payload: object, signature: string, event: string = 'issues'): Request {
+		const body = JSON.stringify(payload);
+		return new Request('http://localhost/webhooks/github', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Hub-Signature-256': signature,
+				'X-GitHub-Event': event,
+			},
+			body,
+		});
+	}
+
+	const mockIssueBody = `## Error Details
+
+| Field | Value |
+|-------|-------|
+| **Worker** | \`my-api\` |
+| **Fingerprint** | \`abc123def456\` |`;
+
+	it('rejects requests without signature', async () => {
+		const env = createMockMonitorWorkerEnv();
+		(env as Record<string, unknown>).GITHUB_WEBHOOK_SECRET = webhookSecret;
+
+		const req = new Request('http://localhost/webhooks/github', {
+			method: 'POST',
+			body: '{}',
+		});
+		const resp = await handleFetch(req, env, createMockCtx());
+		expect(resp.status).toBe(401);
+	});
+
+	it('rejects requests with invalid signature', async () => {
+		const env = createMockMonitorWorkerEnv();
+		(env as Record<string, unknown>).GITHUB_WEBHOOK_SECRET = webhookSecret;
+
+		const req = createWebhookRequest({}, 'sha256=invalidhex');
+		const resp = await handleFetch(req, env, createMockCtx());
+		expect(resp.status).toBe(401);
+	});
+
+	it('removes fingerprint on issues.closed', async () => {
+		const env = createMockMonitorWorkerEnv();
+		(env as Record<string, unknown>).GITHUB_WEBHOOK_SECRET = webhookSecret;
+
+		// Pre-set a fingerprint
+		await env.CF_MONITOR_KV.put(`${KV.ERR_FINGERPRINT}abc123def456`, 'https://github.com/test/issues/1');
+
+		const payload = {
+			action: 'closed',
+			issue: {
+				number: 1,
+				html_url: 'https://github.com/test/issues/1',
+				body: mockIssueBody,
+				labels: [{ name: 'cf:error:exception' }],
+			},
+		};
+
+		const body = JSON.stringify(payload);
+		const sig = await computeSignature(body, webhookSecret);
+		const req = createWebhookRequest(payload, sig);
+		const resp = await handleFetch(req, env, createMockCtx());
+
+		expect(resp.status).toBe(200);
+		const result = await resp.json() as Record<string, unknown>;
+		expect(result.action).toBe('fingerprint-removed');
+
+		// Fingerprint should be gone
+		const fp = await env.CF_MONITOR_KV.get(`${KV.ERR_FINGERPRINT}abc123def456`);
+		expect(fp).toBeNull();
+	});
+
+	it('restores fingerprint on issues.reopened', async () => {
+		const env = createMockMonitorWorkerEnv();
+		(env as Record<string, unknown>).GITHUB_WEBHOOK_SECRET = webhookSecret;
+
+		const payload = {
+			action: 'reopened',
+			issue: {
+				number: 1,
+				html_url: 'https://github.com/test/issues/1',
+				body: mockIssueBody,
+				labels: [{ name: 'cf:error:exception' }],
+			},
+		};
+
+		const body = JSON.stringify(payload);
+		const sig = await computeSignature(body, webhookSecret);
+		const req = createWebhookRequest(payload, sig);
+		const resp = await handleFetch(req, env, createMockCtx());
+
+		expect(resp.status).toBe(200);
+		const result = await resp.json() as Record<string, unknown>;
+		expect(result.action).toBe('fingerprint-restored');
+
+		// Fingerprint should be restored
+		const fp = await env.CF_MONITOR_KV.get(`${KV.ERR_FINGERPRINT}abc123def456`);
+		expect(fp).toBe('https://github.com/test/issues/1');
+	});
+
+	it('mutes fingerprint on issues.labeled with cf:muted', async () => {
+		const env = createMockMonitorWorkerEnv();
+		(env as Record<string, unknown>).GITHUB_WEBHOOK_SECRET = webhookSecret;
+
+		const payload = {
+			action: 'labeled',
+			label: { name: 'cf:muted' },
+			issue: {
+				number: 1,
+				html_url: 'https://github.com/test/issues/1',
+				body: mockIssueBody,
+				labels: [{ name: 'cf:error:exception' }, { name: 'cf:muted' }],
+			},
+		};
+
+		const body = JSON.stringify(payload);
+		const sig = await computeSignature(body, webhookSecret);
+		const req = createWebhookRequest(payload, sig);
+		const resp = await handleFetch(req, env, createMockCtx());
+
+		expect(resp.status).toBe(200);
+		const result = await resp.json() as Record<string, unknown>;
+		expect(result.action).toBe('fingerprint-muted');
+
+		const fp = await env.CF_MONITOR_KV.get(`${KV.ERR_FINGERPRINT}abc123def456`);
+		expect(fp).toContain('muted:');
+	});
+
+	it('skips non-cf-monitor issues', async () => {
+		const env = createMockMonitorWorkerEnv();
+		(env as Record<string, unknown>).GITHUB_WEBHOOK_SECRET = webhookSecret;
+
+		const payload = {
+			action: 'closed',
+			issue: {
+				number: 2,
+				html_url: 'https://github.com/test/issues/2',
+				body: 'Regular issue',
+				labels: [{ name: 'bug' }],
+			},
+		};
+
+		const body = JSON.stringify(payload);
+		const sig = await computeSignature(body, webhookSecret);
+		const req = createWebhookRequest(payload, sig);
+		const resp = await handleFetch(req, env, createMockCtx());
+
+		const result = await resp.json() as Record<string, unknown>;
+		expect(result.skipped).toBe(true);
 	});
 });

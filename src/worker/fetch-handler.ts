@@ -19,6 +19,12 @@ export async function handleFetch(
 	const url = new URL(request.url);
 	const path = url.pathname;
 
+	// POST routes
+	if (request.method === 'POST') {
+		if (path === '/webhooks/github') return handleGitHubWebhook(request, env);
+		return Response.json({ error: 'Not found' }, { status: 404 });
+	}
+
 	if (request.method !== 'GET') {
 		return Response.json({ error: 'Method not allowed' }, { status: 405 });
 	}
@@ -127,4 +133,149 @@ async function handleWorkers(env: MonitorWorkerEnv): Promise<Response> {
 		count: workers.length,
 		timestamp: Date.now(),
 	});
+}
+
+// =============================================================================
+// GITHUB WEBHOOK (#22)
+// =============================================================================
+
+async function handleGitHubWebhook(request: Request, env: MonitorWorkerEnv): Promise<Response> {
+	const secret = (env as unknown as Record<string, unknown>).GITHUB_WEBHOOK_SECRET as string | undefined;
+	if (!secret) {
+		return Response.json({ error: 'Webhook secret not configured' }, { status: 500 });
+	}
+
+	// Verify HMAC-SHA256 signature
+	const signature = request.headers.get('X-Hub-Signature-256');
+	if (!signature) {
+		return Response.json({ error: 'Missing signature' }, { status: 401 });
+	}
+
+	const body = await request.text();
+	const isValid = await verifyHmacSha256(body, signature, secret);
+	if (!isValid) {
+		return Response.json({ error: 'Invalid signature' }, { status: 401 });
+	}
+
+	const event = request.headers.get('X-GitHub-Event');
+	if (event !== 'issues') {
+		return Response.json({ ok: true, skipped: true, reason: `Unhandled event: ${event}` });
+	}
+
+	const payload = JSON.parse(body) as GitHubWebhookPayload;
+	const action = payload.action;
+	const issue = payload.issue;
+
+	if (!issue) {
+		return Response.json({ ok: true, skipped: true, reason: 'No issue in payload' });
+	}
+
+	// Only process issues created by cf-monitor (look for cf:error:* labels)
+	const hasCfLabel = issue.labels?.some((l: { name: string }) => l.name.startsWith('cf:'));
+	if (!hasCfLabel) {
+		return Response.json({ ok: true, skipped: true, reason: 'Not a cf-monitor issue' });
+	}
+
+	try {
+		if (action === 'closed') {
+			// Remove fingerprint from KV — allows re-creation if error recurs
+			await removeFingerprint(env, issue);
+			return Response.json({ ok: true, action: 'fingerprint-removed' });
+		}
+
+		if (action === 'reopened') {
+			// Re-add fingerprint to KV — suppresses duplicate creation
+			await restoreFingerprint(env, issue);
+			return Response.json({ ok: true, action: 'fingerprint-restored' });
+		}
+
+		if (action === 'labeled') {
+			const label = payload.label?.name;
+			if (label === 'cf:muted') {
+				// Store fingerprint as muted (longer TTL, skipped by tail handler)
+				await muteFingerprint(env, issue);
+				return Response.json({ ok: true, action: 'fingerprint-muted' });
+			}
+		}
+
+		return Response.json({ ok: true, skipped: true, reason: `Unhandled action: ${action}` });
+	} catch (err) {
+		console.error(`[cf-monitor:webhook] Error processing ${action}: ${err}`);
+		return Response.json({ error: 'Processing failed' }, { status: 500 });
+	}
+}
+
+/** Verify HMAC-SHA256 signature from GitHub webhook. */
+async function verifyHmacSha256(body: string, signature: string, secret: string): Promise<boolean> {
+	const encoder = new TextEncoder();
+	const key = await crypto.subtle.importKey(
+		'raw',
+		encoder.encode(secret),
+		{ name: 'HMAC', hash: 'SHA-256' },
+		false,
+		['sign']
+	);
+
+	const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
+	const computed = `sha256=${Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+
+	// Timing-safe comparison
+	if (computed.length !== signature.length) return false;
+	let result = 0;
+	for (let i = 0; i < computed.length; i++) {
+		result |= computed.charCodeAt(i) ^ signature.charCodeAt(i);
+	}
+	return result === 0;
+}
+
+/** Extract fingerprint from issue body and remove from KV. */
+async function removeFingerprint(env: MonitorWorkerEnv, issue: GitHubIssue): Promise<void> {
+	const fingerprint = extractFingerprint(issue);
+	if (fingerprint) {
+		await env.CF_MONITOR_KV.delete(`${KV.ERR_FINGERPRINT}${fingerprint}`);
+	}
+}
+
+/** Re-add fingerprint → issue URL mapping to KV. */
+async function restoreFingerprint(env: MonitorWorkerEnv, issue: GitHubIssue): Promise<void> {
+	const fingerprint = extractFingerprint(issue);
+	if (fingerprint) {
+		await env.CF_MONITOR_KV.put(
+			`${KV.ERR_FINGERPRINT}${fingerprint}`,
+			issue.html_url,
+			{ expirationTtl: 7_776_000 } // 90 days
+		);
+	}
+}
+
+/** Store fingerprint as muted (prevents future alerts). */
+async function muteFingerprint(env: MonitorWorkerEnv, issue: GitHubIssue): Promise<void> {
+	const fingerprint = extractFingerprint(issue);
+	if (fingerprint) {
+		await env.CF_MONITOR_KV.put(
+			`${KV.ERR_FINGERPRINT}${fingerprint}`,
+			`muted:${issue.html_url}`,
+			{ expirationTtl: 7_776_000 }
+		);
+	}
+}
+
+/** Extract fingerprint from issue body (looks for `| **Fingerprint** | `...` |` table row). */
+function extractFingerprint(issue: GitHubIssue): string | null {
+	const body = issue.body ?? '';
+	const match = body.match(/\*\*Fingerprint\*\*\s*\|\s*`([^`]+)`/);
+	return match ? match[1] : null;
+}
+
+interface GitHubWebhookPayload {
+	action: string;
+	issue?: GitHubIssue;
+	label?: { name: string };
+}
+
+interface GitHubIssue {
+	number: number;
+	html_url: string;
+	body?: string;
+	labels?: Array<{ name: string }>;
 }
