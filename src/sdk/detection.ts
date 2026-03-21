@@ -6,9 +6,13 @@ import { MONITOR_BINDINGS } from '../constants.js';
 
 /**
  * Auto-detect the worker name from env.
- * Cloudflare sets WORKER_NAME at runtime (wrangler v4+).
+ * Cloudflare does NOT auto-set WORKER_NAME — it must be added to wrangler
+ * vars (e.g. via `cf-monitor wire --apply`) or passed as config.workerName.
+ *
+ * Detection chain: config.workerName → env.WORKER_NAME → env.name → 'worker'
  */
-export function detectWorkerName(env: object): string {
+export function detectWorkerName(env: object, configWorkerName?: string): string {
+	if (configWorkerName) return configWorkerName;
 	const e = env as Record<string, unknown>;
 	if (typeof e.WORKER_NAME === 'string' && e.WORKER_NAME) return e.WORKER_NAME;
 	if (typeof e.name === 'string' && e.name) return e.name;

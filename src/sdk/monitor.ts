@@ -51,6 +51,7 @@ export function monitor<Env extends object = object>(
 	const autoHeartbeat = config.autoHeartbeat !== false;
 	const healthPath = config.healthEndpoint === false ? null : (config.healthEndpoint ?? '/_monitor/health');
 	const limits = config.limits;
+	const configWorkerName = config.workerName;
 
 	const worker: ExportedHandler<Env> = {};
 
@@ -76,7 +77,7 @@ export function monitor<Env extends object = object>(
 				throw new Error('[cf-monitor] Missing CF_MONITOR_KV or CF_MONITOR_AE bindings.');
 			}
 
-			const workerName = detectWorkerName(env);
+			const workerName = detectWorkerName(env, configWorkerName);
 			const featureId = resolveFeatureId(config, 'fetch', workerName, { request });
 			if (featureId === false) return config.fetch(request, env, ctx);
 
@@ -136,7 +137,7 @@ export function monitor<Env extends object = object>(
 				throw new Error('[cf-monitor] Missing CF_MONITOR_KV or CF_MONITOR_AE bindings.');
 			}
 
-			const workerName = detectWorkerName(env);
+			const workerName = detectWorkerName(env, configWorkerName);
 			const featureId = resolveFeatureId(config, 'cron', workerName, { cron: controller.cron });
 			if (featureId === false) {
 				await userScheduled(controller, env, ctx);
@@ -195,7 +196,7 @@ export function monitor<Env extends object = object>(
 				throw new Error('[cf-monitor] Missing bindings.');
 			}
 
-			const workerName = detectWorkerName(env);
+			const workerName = detectWorkerName(env, configWorkerName);
 			const featureId = resolveFeatureId(config, 'queue', workerName, { queueName: batch.queue });
 			if (featureId === false) {
 				await userQueue(batch, env, ctx);
@@ -240,19 +241,29 @@ export function monitor<Env extends object = object>(
 // INTERNALS
 // =============================================================================
 
-/** Resolve feature ID from config or auto-generate. */
+/**
+ * Resolve feature ID from config or auto-generate.
+ *
+ * Precedence:
+ * 1. config.featureId — single ID for all routes
+ * 2. config.features[key] — exact route match
+ * 3. Auto-generate using config.featurePrefix ?? workerName
+ */
 function resolveFeatureId<Env extends object>(
 	config: MonitorConfig<Env>,
 	handlerType: 'fetch' | 'cron' | 'queue',
 	workerName: string,
 	context: { request?: Request; cron?: string; queueName?: string }
 ): string | false {
+	// 1. Global feature ID override
+	if (config.featureId) return config.featureId;
+
+	// 2. Exact route/cron/queue match from features map
 	if (config.features) {
 		let key: string | undefined;
 		if (handlerType === 'fetch' && context.request) {
 			const url = new URL(context.request.url);
 			key = `${context.request.method} ${url.pathname}`;
-			// Try exact match first, then check prefix patterns
 			const match = config.features[key];
 			if (match === false) return false;
 			if (typeof match === 'string') return match;
@@ -269,17 +280,18 @@ function resolveFeatureId<Env extends object>(
 		}
 	}
 
-	// Auto-generate
+	// 3. Auto-generate using featurePrefix (or workerName as fallback)
+	const prefix = config.featurePrefix ?? workerName;
 	if (handlerType === 'fetch' && context.request) {
-		return generateFetchFeatureId(workerName, context.request);
+		return generateFetchFeatureId(prefix, context.request);
 	}
 	if (handlerType === 'cron' && context.cron) {
-		return generateCronFeatureId(workerName, context.cron);
+		return generateCronFeatureId(prefix, context.cron);
 	}
 	if (handlerType === 'queue' && context.queueName) {
-		return generateQueueFeatureId(workerName, context.queueName);
+		return generateQueueFeatureId(prefix, context.queueName);
 	}
-	return `${workerName}:${handlerType}:unknown`;
+	return `${prefix}:${handlerType}:unknown`;
 }
 
 /** Flush accumulated metrics to Analytics Engine and update budget counters. */

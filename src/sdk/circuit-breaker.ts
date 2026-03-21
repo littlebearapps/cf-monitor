@@ -64,13 +64,16 @@ export async function tripFeatureCb(
 
 /**
  * Reset a feature circuit breaker.
+ * Writes 'GO' with short TTL instead of deleting — forces cache invalidation
+ * across KV edge replicas, avoiding the ~10s eventual consistency delay that
+ * kv.delete() exhibits. The 60s TTL ensures the key self-cleans.
  */
 export async function resetFeatureCb(
 	kv: KVNamespace,
 	featureId: string
 ): Promise<void> {
 	await Promise.all([
-		kv.delete(`${KV.CB_FEATURE}${featureId}`),
+		kv.put(`${KV.CB_FEATURE}${featureId}`, 'GO', { expirationTtl: 60 }),
 		kv.delete(`${KV.CB_FEATURE}${featureId}:reason`),
 	]);
 }

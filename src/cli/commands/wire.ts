@@ -86,7 +86,12 @@ function processConfig(configPath: string, apply: boolean): ProcessResult {
 	const aeDatasets = (config.analytics_engine_datasets as Array<{ binding: string }>) ?? [];
 	const hasMonitorAE = aeDatasets.some((ds) => ds.binding === 'CF_MONITOR_AE');
 
-	if (hasMonitorTail && hasMonitorKV && hasMonitorAE) return 'skipped';
+	// Check if WORKER_NAME is set in vars
+	const vars = (config.vars as Record<string, string>) ?? {};
+	const hasWorkerName = typeof vars.WORKER_NAME === 'string' && vars.WORKER_NAME.length > 0;
+	const workerName = config.name as string | undefined;
+
+	if (hasMonitorTail && hasMonitorKV && hasMonitorAE && hasWorkerName) return 'skipped';
 
 	if (!apply) return 'modified';
 
@@ -95,6 +100,12 @@ function processConfig(configPath: string, apply: boolean): ProcessResult {
 
 	if (!hasMonitorTail) {
 		modified = addJsoncProperty(modified, 'tail_consumers', [{ service: 'cf-monitor' }], tailConsumers);
+	}
+
+	// Inject WORKER_NAME into vars if missing (reads `name` from wrangler config)
+	if (!hasWorkerName && workerName) {
+		modified = addJsoncVarsEntry(modified, 'WORKER_NAME', workerName);
+		console.log(`    ${pc.cyan('+')} Added WORKER_NAME: "${workerName}" to vars`);
 	}
 
 	// KV and AE bindings need the provisioned IDs — tell user to add manually for now
@@ -112,6 +123,32 @@ function stripJsoncComments(text: string): string {
 		.replace(/\/\/.*$/gm, '')
 		.replace(/\/\*[\s\S]*?\*\//g, '')
 		.replace(/,(\s*[}\]])/g, '$1');
+}
+
+/**
+ * Add a key-value entry to the "vars" object in a JSONC file.
+ * Creates the "vars" section if it doesn't exist.
+ */
+function addJsoncVarsEntry(raw: string, key: string, value: string): string {
+	const varsRegex = /"vars"\s*:\s*\{([^}]*)}/;
+	const match = raw.match(varsRegex);
+
+	if (match) {
+		// vars section exists — append entry
+		const existingContent = match[1].trimEnd();
+		const needsComma = existingContent.length > 0 && !existingContent.endsWith(',');
+		const newContent = `${existingContent}${needsComma ? ',' : ''}\n\t\t"${key}": "${value}"`;
+		return raw.replace(varsRegex, `"vars": {${newContent}\n\t}`);
+	}
+
+	// No vars section — add before the last closing brace
+	const lastBrace = raw.lastIndexOf('}');
+	if (lastBrace === -1) return raw;
+
+	const before = raw.slice(0, lastBrace).trimEnd();
+	const needsComma = before.endsWith('}') || before.endsWith(']') || before.endsWith('"') || /\d$/.test(before);
+
+	return `${before}${needsComma ? ',' : ''}\n\t"vars": {\n\t\t"${key}": "${value}"\n\t}\n}`;
 }
 
 function addJsoncProperty(

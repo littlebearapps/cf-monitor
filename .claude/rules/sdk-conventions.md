@@ -28,16 +28,29 @@ All KV key prefixes include a version segment (e.g. `cb:v1:feature:`). When sche
 - `RequestLimits` checks happen AFTER incrementing (so the limit is inclusive)
 - New binding types: add detection in `detection.ts`, proxy in `proxy.ts`
 
-## Feature ID Format
+## Feature ID Resolution
 
-Auto-generated: `{workerName}:{handlerType}:{discriminator}`
+`MonitorConfig` offers three levels of control:
 
-Examples:
-- `my-api:fetch:GET:api-users`
-- `my-api:cron:0-2-x-x-x`
-- `my-api:queue:task-pipeline`
+1. **`featureId`** — Single ID for ALL routes. Use for simple workers with one budget bucket.
+2. **`featurePrefix`** — Replaces worker name in auto-generated IDs. e.g. `featurePrefix: 'platform'` → `platform:fetch:GET:notifications`.
+3. **`features`** — Route-specific overrides. Exact match on `METHOD /path`, cron expression, or queue name.
+4. **Auto-generated** — `{workerName}:{handlerType}:{discriminator}` (default).
+
+Precedence: `featureId` → `features` map → auto-generate with `featurePrefix ?? workerName`.
 
 Path normalisation strips numeric IDs, UUIDs, and limits to 2 path segments. See `detection.ts` → `normalisePath()`.
+
+## Worker Name Detection
+
+`MonitorConfig.workerName` has highest priority. Detection chain:
+`config.workerName` → `env.WORKER_NAME` → `env.name` → `'worker'`
+
+The `wire --apply` CLI command auto-injects `WORKER_NAME` from wrangler config `name` field.
+
+## Circuit Breaker Reset
+
+`resetFeatureCb()` writes `'GO'` with 60s TTL instead of `kv.delete()`. This forces cache invalidation across KV edge replicas, avoiding the ~10s eventual consistency delay that delete exhibits.
 
 ## No Project Concept
 

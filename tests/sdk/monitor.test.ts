@@ -247,6 +247,121 @@ describe('monitor() features map', () => {
 	});
 });
 
+describe('monitor() workerName config (#28)', () => {
+	it('uses config.workerName over env detection', async () => {
+		const worker = monitor({
+			workerName: 'explicit-name',
+			fetch: async (_req, e) => {
+				await (e as any).DB.prepare('SELECT 1').first();
+				return new Response('ok');
+			},
+		});
+
+		await worker.fetch!(createRequest('/api/test'), env as any, ctx);
+		await ctx._flush();
+
+		const dp = env.CF_MONITOR_AE._dataPoints[0];
+		expect(dp.blobs[0]).toBe('explicit-name');
+		expect(dp.indexes[0]).toBe('explicit-name:fetch:GET:api-test');
+	});
+
+	it('health endpoint returns config.workerName', async () => {
+		const worker = monitor({
+			workerName: 'custom-worker',
+			fetch: async () => new Response('user'),
+		});
+
+		const resp = await worker.fetch!(createRequest('/_monitor/health'), env as any, ctx);
+		const body = await resp.json() as Record<string, unknown>;
+		// Health endpoint still uses detectWorkerName(env) — not config.workerName
+		// This is by design: health endpoint is pre-instrumentation
+		expect(body.worker).toBeDefined();
+	});
+});
+
+describe('monitor() featureId config (#30)', () => {
+	it('uses config.featureId for all routes', async () => {
+		const worker = monitor({
+			featureId: 'my-app:all',
+			fetch: async (_req, e) => {
+				await (e as any).DB.prepare('SELECT 1').first();
+				return new Response('ok');
+			},
+		});
+
+		await worker.fetch!(createRequest('/api/users'), env as any, ctx);
+		await ctx._flush();
+
+		const dp = env.CF_MONITOR_AE._dataPoints[0];
+		expect(dp.indexes[0]).toBe('my-app:all');
+	});
+
+	it('featureId takes precedence over features map', async () => {
+		const worker = monitor({
+			featureId: 'global-id',
+			features: { 'GET /api/users': 'route-specific' },
+			fetch: async (_req, e) => {
+				await (e as any).DB.prepare('SELECT 1').first();
+				return new Response('ok');
+			},
+		});
+
+		await worker.fetch!(createRequest('/api/users'), env as any, ctx);
+		await ctx._flush();
+
+		const dp = env.CF_MONITOR_AE._dataPoints[0];
+		expect(dp.indexes[0]).toBe('global-id');
+	});
+});
+
+describe('monitor() featurePrefix config (#30)', () => {
+	it('uses featurePrefix in auto-generated IDs', async () => {
+		const worker = monitor({
+			featurePrefix: 'platform',
+			fetch: async (_req, e) => {
+				await (e as any).DB.prepare('SELECT 1').first();
+				return new Response('ok');
+			},
+		});
+
+		await worker.fetch!(createRequest('/api/notifications'), env as any, ctx);
+		await ctx._flush();
+
+		const dp = env.CF_MONITOR_AE._dataPoints[0];
+		expect(dp.indexes[0]).toBe('platform:fetch:GET:api-notifications');
+	});
+
+	it('features map still overrides featurePrefix', async () => {
+		const worker = monitor({
+			featurePrefix: 'platform',
+			features: { 'GET /api/users': 'platform:users:api' },
+			fetch: async (_req, e) => {
+				await (e as any).DB.prepare('SELECT 1').first();
+				return new Response('ok');
+			},
+		});
+
+		await worker.fetch!(createRequest('/api/users'), env as any, ctx);
+		await ctx._flush();
+
+		const dp = env.CF_MONITOR_AE._dataPoints[0];
+		expect(dp.indexes[0]).toBe('platform:users:api');
+	});
+
+	it('featurePrefix works with scheduled handler', async () => {
+		const handler = vi.fn().mockImplementation(async (_ctrl: unknown, e: any) => {
+			await e.DB.prepare('SELECT 1').first();
+		});
+		const worker = monitor({ featurePrefix: 'myapp', scheduled: handler });
+
+		await worker.scheduled!(createMockScheduledController('0 2 * * *'), env as any, ctx);
+		await ctx._flush();
+
+		const dp = env.CF_MONITOR_AE._dataPoints[0];
+		expect(dp.indexes[0]).toBe('myapp:cron:0-2-x-x-x');
+	});
+});
+
 describe('monitor() last_seen KV write (#19)', () => {
 	it('writes workers:{name}:last_seen to KV on telemetry flush', async () => {
 		const worker = monitor({

@@ -45,10 +45,11 @@
 
 **Quick Commands**:
 ```bash
-npm test              # Run all tests (vitest)
-npm run typecheck     # TypeScript check (Workers + CLI)
-npm run build:cli     # Build CLI for npm publish
-npm pack --dry-run    # Verify package contents
+npm test                    # Run unit tests (222 tests, vitest)
+npm run test:integration    # Run integration tests (36 tests, needs CF credentials)
+npm run typecheck           # TypeScript check (Workers + CLI)
+npm run build:cli           # Build CLI for npm publish
+npm pack --dry-run          # Verify package contents
 ```
 
 ---
@@ -96,11 +97,18 @@ cf-monitor/
 ├── worker/                   # Pre-built entry for wrangler deploy
 │   └── index.ts
 │
-└── tests/                    # 213 Vitest tests (~75% coverage)
+├── vitest.integration.config.ts  # Integration test config (globalSetup, 120s timeout)
+│
+└── tests/                    # 222 unit tests + 36 integration tests
     ├── helpers/               # Mock KV, AE, env, request factories
     ├── sdk/                   # monitor, proxy, metrics, detection, circuit-breaker
     ├── worker/                # tail, fetch, scheduled, config, ae-client, crons, errors
-    └── cli/                   # wrangler-generator, cloudflare-api
+    ├── cli/                   # wrangler-generator, cloudflare-api
+    └── integration/           # 8 test files — deploys real workers to CF with test- prefix
+        ├── setup.ts           # Global setup/teardown (deploy once)
+        ├── helpers.ts         # CF API helpers, KV operations, webhook signing
+        ├── test-consumer.ts   # 10-route consumer worker for testing
+        └── 01-08*.test.ts     # Sequential: health, SDK, CB, telemetry, errors, budgets, crons, webhooks
 ```
 
 ---
@@ -204,19 +212,23 @@ Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
 - 18 consumer workers migrated from `platformWorker()` to `monitor()`
 - Both `error-collector` and `cf-monitor` receive tail events (parallel testing)
 
-**Known issue**: Consumer workers need `WORKER_NAME` in wrangler vars for proper AE identification (#28).
+---
+
+## Bug Fixes (v0.2.1)
+
+**#28 — WORKER_NAME detection**: FIXED. Added `workerName` config option (highest priority), `wire --apply` now auto-injects `WORKER_NAME` from wrangler `name` field. Detection chain: `config.workerName` → `env.WORKER_NAME` → `env.name` → `'worker'`.
+
+**#29 — CB reset propagation delay**: FIXED. `resetFeatureCb()` now writes `'GO'` with 60s TTL instead of `kv.delete()`, forcing faster KV cache invalidation across edge replicas.
+
+**#30 — Feature ID format**: FIXED. Added `featureId` (single ID for all routes) and `featurePrefix` (replaces worker name in auto-generated IDs). Precedence: `featureId` → `features` map → auto-generate with `featurePrefix ?? workerName`.
+
+**#26 — Integration test suite**: IMPLEMENTED. 36 tests across 8 files covering all features. Deploys real workers with `test-` prefix to Platform CF account. CI: runs on push to main + workflow_dispatch.
 
 ---
 
 ## Open Work
 
-See https://github.com/littlebearapps/cf-monitor/issues for all planned features.
-
-**Bugs from production testing:**
-- #28 — WORKER_NAME detection falls back to `worker` (workaround: add to wrangler vars)
-- #29 — CB reset via KV delete has ~10s propagation delay
-- #30 — Feature ID format change from platform-sdk (cosmetic, per-route granularity)
+See https://github.com/littlebearapps/cf-monitor/issues for planned features.
 
 **Remaining features:**
-- #26 — Automated integration test in CI
-- #8, #9, #10 — AI optional features (pattern discovery, health reports, coverage auditor)
+- #8, #9, #10 — AI optional features (pattern discovery, health reports, coverage auditor) — stubs created in `src/worker/optional/`

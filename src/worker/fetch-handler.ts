@@ -1,5 +1,5 @@
-import { KV } from '../constants.js';
-import type { MonitorWorkerEnv } from '../types.js';
+import { KV, PRIORITY_MAP } from '../constants.js';
+import type { MonitorWorkerEnv, TailOutcome } from '../types.js';
 import { collectAccountMetrics } from './crons/collect-metrics.js';
 import { checkBudgets } from './crons/budget-check.js';
 import { detectGaps } from './crons/gap-detection.js';
@@ -7,6 +7,10 @@ import { detectCostSpikes } from './crons/cost-spike.js';
 import { discoverWorkers } from './crons/worker-discovery.js';
 import { runDailyRollup } from './crons/daily-rollup.js';
 import { runSyntheticHealthCheck } from './crons/synthetic-health.js';
+import { tripFeatureCb, resetFeatureCb, setAccountCbStatus } from '../sdk/circuit-breaker.js';
+import { computeFingerprint } from './errors/fingerprint.js';
+import { matchTransientPattern } from './errors/patterns.js';
+import { formatBudgetWarning, formatErrorAlert } from './alerts/slack.js';
 
 /**
  * API endpoints for the cf-monitor worker.
@@ -30,6 +34,11 @@ export async function handleFetch(
 	if (request.method === 'POST') {
 		if (path === '/webhooks/github') return handleGitHubWebhook(request, env);
 		if (path.startsWith('/admin/cron/')) return handleAdminCronTrigger(path, env);
+		if (path === '/admin/cb/trip') return handleAdminCbTrip(request, env);
+		if (path === '/admin/cb/reset') return handleAdminCbReset(request, env);
+		if (path === '/admin/cb/account') return handleAdminCbAccount(request, env);
+		if (path === '/admin/test/github-dry-run') return handleGitHubDryRun(request, env);
+		if (path === '/admin/test/slack-dry-run') return handleSlackDryRun(request);
 		return Response.json({ error: 'Not found' }, { status: 404 });
 	}
 
@@ -183,6 +192,185 @@ async function handleAdminCronTrigger(path: string, env: MonitorWorkerEnv): Prom
 			error: String(err),
 			durationMs: Date.now() - start,
 		}, { status: 500 });
+	}
+}
+
+// =============================================================================
+// ADMIN: CIRCUIT BREAKER CONTROL (for testing)
+// =============================================================================
+
+async function handleAdminCbTrip(request: Request, env: MonitorWorkerEnv): Promise<Response> {
+	try {
+		const body = await request.json() as { featureId?: string; reason?: string; ttlSeconds?: number };
+		if (!body.featureId) {
+			return Response.json({ error: 'Missing featureId' }, { status: 400 });
+		}
+		await tripFeatureCb(env.CF_MONITOR_KV, body.featureId, body.reason ?? 'admin', body.ttlSeconds ?? 3600);
+		return Response.json({ ok: true, action: 'trip', featureId: body.featureId });
+	} catch (err) {
+		return Response.json({ error: String(err) }, { status: 500 });
+	}
+}
+
+async function handleAdminCbReset(request: Request, env: MonitorWorkerEnv): Promise<Response> {
+	try {
+		const body = await request.json() as { featureId?: string };
+		if (!body.featureId) {
+			return Response.json({ error: 'Missing featureId' }, { status: 400 });
+		}
+		await resetFeatureCb(env.CF_MONITOR_KV, body.featureId);
+		return Response.json({ ok: true, action: 'reset', featureId: body.featureId });
+	} catch (err) {
+		return Response.json({ error: String(err) }, { status: 500 });
+	}
+}
+
+async function handleAdminCbAccount(request: Request, env: MonitorWorkerEnv): Promise<Response> {
+	try {
+		const body = await request.json() as { status?: string; ttlSeconds?: number };
+		if (!body.status) {
+			return Response.json({ error: 'Missing status (active|warning|paused)' }, { status: 400 });
+		}
+		if (body.status === 'clear') {
+			await env.CF_MONITOR_KV.delete(KV.CB_ACCOUNT);
+		} else {
+			await setAccountCbStatus(env.CF_MONITOR_KV, body.status as 'active' | 'warning' | 'paused', body.ttlSeconds ?? 3600);
+		}
+		return Response.json({ ok: true, action: 'account', status: body.status });
+	} catch (err) {
+		return Response.json({ error: String(err) }, { status: 500 });
+	}
+}
+
+// =============================================================================
+// ADMIN: DRY-RUN TEST ENDPOINTS (#34, #35)
+// =============================================================================
+
+interface GitHubDryRunBody {
+	scriptName?: string;
+	outcome?: string;
+	errorMessage?: string;
+	errorName?: string;
+}
+
+async function handleGitHubDryRun(request: Request, env: MonitorWorkerEnv): Promise<Response> {
+	try {
+		const body = await request.json() as GitHubDryRunBody;
+		const scriptName = body.scriptName ?? 'unknown';
+		const outcome = body.outcome ?? 'exception';
+		const errorMessage = body.errorMessage ?? 'Unknown error';
+		const errorName = body.errorName ?? 'Error';
+		const priority = PRIORITY_MAP[outcome] ?? 'P3';
+		const fingerprint = computeFingerprint(scriptName, outcome, errorMessage);
+		const isTransient = matchTransientPattern(errorMessage, outcome);
+
+		const labels = [
+			`cf:error:${outcome}`,
+			`cf:priority:${priority.toLowerCase()}`,
+		];
+		if (isTransient) labels.push('cf:transient');
+
+		const title = `[${priority}] ${scriptName}: ${outcome}`;
+		const issueBody = formatDryRunIssueBody({
+			scriptName,
+			outcome: outcome as TailOutcome,
+			priority,
+			fingerprint,
+			errorMessage,
+			errorName,
+			isTransient,
+			accountName: env.ACCOUNT_NAME,
+		});
+
+		return Response.json({ title, body: issueBody, labels, fingerprint, priority, isTransient });
+	} catch (err) {
+		return Response.json({ error: String(err) }, { status: 500 });
+	}
+}
+
+function formatDryRunIssueBody(params: {
+	scriptName: string;
+	outcome: TailOutcome;
+	priority: string;
+	fingerprint: string;
+	errorMessage: string;
+	errorName: string;
+	isTransient: boolean;
+	accountName: string;
+}): string {
+	return `## Error Details
+
+| Field | Value |
+|-------|-------|
+| **Worker** | \`${params.scriptName}\` |
+| **Outcome** | \`${params.outcome}\` |
+| **Priority** | ${params.priority} |
+| **Account** | ${params.accountName} |
+| **Transient** | ${params.isTransient ? 'Yes' : 'No'} |
+| **Fingerprint** | \`${params.fingerprint}\` |
+
+### Error
+
+\`\`\`
+${params.errorName}: ${params.errorMessage}
+\`\`\`
+
+### Context
+
+- **Detected by**: cf-monitor tail handler
+- **Time**: ${new Date().toISOString()}
+${params.isTransient ? '\n> This error matches a transient pattern. It may resolve on its own.' : ''}
+
+---
+*Generated by [cf-monitor](https://github.com/littlebearapps/cf-monitor)*`;
+}
+
+interface SlackDryRunBody {
+	type?: string;
+	featureId?: string;
+	metric?: string;
+	current?: number;
+	limit?: number;
+	scriptName?: string;
+	outcome?: string;
+	priority?: string;
+	issueUrl?: string;
+}
+
+async function handleSlackDryRun(request: Request): Promise<Response> {
+	try {
+		const body = await request.json() as SlackDryRunBody;
+		const type = body.type ?? 'budget-warning';
+
+		if (type === 'budget-warning') {
+			const current = body.current ?? 0;
+			const limit = body.limit ?? 1000;
+			const pct = limit > 0 ? (current / limit) * 100 : 0;
+			const message = formatBudgetWarning(
+				'test-account',
+				body.featureId ?? 'unknown:feature',
+				body.metric ?? 'kv_reads',
+				current,
+				limit,
+				pct
+			);
+			return Response.json({ type, message });
+		}
+
+		if (type === 'error-alert') {
+			const message = formatErrorAlert(
+				'test-account',
+				body.scriptName ?? 'unknown',
+				body.outcome ?? 'exception',
+				body.priority ?? 'P1',
+				body.issueUrl ?? null
+			);
+			return Response.json({ type, message });
+		}
+
+		return Response.json({ error: `Unknown type: ${type}` }, { status: 400 });
+	} catch (err) {
+		return Response.json({ error: String(err) }, { status: 500 });
 	}
 }
 

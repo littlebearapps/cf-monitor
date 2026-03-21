@@ -10,6 +10,10 @@ import {
 import { createMockConsumerEnv, createMockD1, createMockUserKV, createMockR2, createMockAI, createMockVectorize, createMockQueue } from '../helpers/mock-env.js';
 
 describe('detectWorkerName', () => {
+	it('returns configWorkerName when provided (highest priority)', () => {
+		expect(detectWorkerName({ WORKER_NAME: 'env-name' }, 'config-name')).toBe('config-name');
+	});
+
 	it('returns WORKER_NAME from env when present', () => {
 		expect(detectWorkerName({ WORKER_NAME: 'my-api' })).toBe('my-api');
 	});

@@ -16,6 +16,26 @@ export interface MonitorConfig<Env extends object = object> {
 	tail?: (events: TraceItem[], env: Env, ctx: ExecutionContext) => void | Promise<void>;
 
 	/**
+	 * Explicit worker name. Highest priority — overrides env detection.
+	 * If not set, falls back to env.WORKER_NAME → env.name → 'worker'.
+	 */
+	workerName?: string;
+
+	/**
+	 * Single feature ID for ALL handler invocations.
+	 * Use when you want one budget bucket for the entire worker.
+	 * Takes precedence over `features` map and auto-generation.
+	 */
+	featureId?: string;
+
+	/**
+	 * Prefix for auto-generated feature IDs, replacing the worker name.
+	 * e.g. featurePrefix: 'platform' → 'platform:fetch:GET:notifications'
+	 * Takes precedence over workerName in feature ID generation only.
+	 */
+	featurePrefix?: string;
+
+	/**
 	 * Custom feature ID mapping.
 	 * Keys: route pattern ('POST /api/scan'), cron expression ('0 2 * * *'), or queue name.
 	 * Values: feature ID string, or `false` to exclude from tracking.

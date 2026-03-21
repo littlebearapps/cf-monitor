@@ -84,14 +84,25 @@ describe('tripFeatureCb', () => {
 });
 
 describe('resetFeatureCb', () => {
-	it('deletes both status and reason keys', async () => {
+	it('writes GO with TTL instead of deleting (faster propagation)', async () => {
 		const kv = createMockKV();
 		await kv.put(`${KV.CB_FEATURE}my-feature`, 'STOP');
 		await kv.put(`${KV.CB_FEATURE}my-feature:reason`, 'test');
 
 		await resetFeatureCb(kv, 'my-feature');
 
-		expect(await kv.get(`${KV.CB_FEATURE}my-feature`)).toBeNull();
+		// Status key should be 'GO' (not null) — forces KV cache invalidation
+		expect(await kv.get(`${KV.CB_FEATURE}my-feature`)).toBe('GO');
+		// Reason key is deleted (not read in hot path)
 		expect(await kv.get(`${KV.CB_FEATURE}my-feature:reason`)).toBeNull();
+	});
+
+	it('checkFeatureCb returns GO after reset', async () => {
+		const kv = createMockKV();
+		await tripFeatureCb(kv, 'my-feature', 'Budget exceeded', 3600);
+		expect(await checkFeatureCb(kv, 'my-feature')).toBe('STOP');
+
+		await resetFeatureCb(kv, 'my-feature');
+		expect(await checkFeatureCb(kv, 'my-feature')).toBe('GO');
 	});
 });

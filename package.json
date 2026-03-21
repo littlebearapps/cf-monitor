@@ -22,6 +22,7 @@
     "prebuild:cli": "rm -rf dist/cli",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.cli.json",
     "prepublishOnly": "npm run build:cli"
   },
