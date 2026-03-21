@@ -1,0 +1,64 @@
+{
+  "name": "@littlebearapps/cf-monitor",
+  "version": "0.1.0",
+  "description": "Self-contained Cloudflare account monitoring: error collection, feature budgets, circuit breakers, cost protection. One worker per account.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "bin": {
+    "cf-monitor": "./dist/cli/index.js"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts"
+  },
+  "files": [
+    "src/**/*.ts",
+    "dist/cli/",
+    "worker/",
+    "cf-monitor.schema.json"
+  ],
+  "scripts": {
+    "build:cli": "tsc -p tsconfig.cli.json",
+    "prebuild:cli": "rm -rf dist/cli",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.cli.json",
+    "prepublishOnly": "npm run build:cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/littlebearapps/cf-monitor.git"
+  },
+  "homepage": "https://github.com/littlebearapps/cf-monitor#readme",
+  "bugs": {
+    "url": "https://github.com/littlebearapps/cf-monitor/issues"
+  },
+  "keywords": [
+    "cloudflare",
+    "cloudflare-workers",
+    "monitoring",
+    "circuit-breaker",
+    "cost-protection",
+    "error-collection",
+    "budget-enforcement",
+    "observability",
+    "analytics-engine",
+    "tail-worker"
+  ],
+  "author": "Little Bear Apps",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^14.0.3",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.0.5",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
