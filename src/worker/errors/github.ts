@@ -9,6 +9,8 @@ export interface ErrorIssueParams {
 	errorName: string;
 	isTransient: boolean;
 	accountName: string;
+	/** Override the issue body (e.g. for digest issues). */
+	bodyOverride?: string;
 }
 
 /**
@@ -28,9 +30,10 @@ export async function createGitHubIssue(
 		`cf:priority:${params.priority.toLowerCase()}`,
 	];
 	if (params.isTransient) labels.push('cf:transient');
+	if (params.bodyOverride) labels.push('cf:digest');
 
 	const title = `[${params.priority}] ${params.scriptName}: ${params.outcome}`;
-	const body = formatIssueBody(params);
+	const body = params.bodyOverride ?? formatIssueBody(params);
 
 	try {
 		const response = await fetch(

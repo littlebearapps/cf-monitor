@@ -138,3 +138,99 @@ describe('handleTailEvents', () => {
 		expect(mockFetch.mock.calls.length).toBeGreaterThanOrEqual(2);
 	});
 });
+
+describe('soft error capture (#14)', () => {
+	it('captures console.error() from ok-outcome events as soft_error', async () => {
+		const event = createTraceItem({
+			outcome: 'ok',
+			exceptions: [],
+			logs: [
+				{ level: 'error', message: ['Database connection failed'], timestamp: Date.now() },
+			],
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		// Should create a GitHub issue for the soft error
+		expect(mockFetch).toHaveBeenCalledOnce();
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+		expect(body.title).toContain('soft_error');
+		expect(body.labels).toContain('cf:error:soft_error');
+	});
+
+	it('stores console.warn() in KV digest instead of creating immediate issue', async () => {
+		const event = createTraceItem({
+			outcome: 'ok',
+			exceptions: [],
+			logs: [
+				{ level: 'warn', message: ['Deprecated API used'], timestamp: Date.now() },
+			],
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		// Should NOT create a GitHub issue for warnings
+		expect(mockFetch).not.toHaveBeenCalled();
+
+		// Should store in KV digest
+		const today = new Date().toISOString().slice(0, 10);
+		const digestRaw = await env.CF_MONITOR_KV.get(`warn:digest:${today}`);
+		expect(digestRaw).not.toBeNull();
+
+		const digest = JSON.parse(digestRaw!);
+		expect(digest).toHaveLength(1);
+		expect(digest[0].script).toBe('my-worker');
+		expect(digest[0].message).toBe('Deprecated API used');
+	});
+
+	it('deduplicates warnings in the same digest', async () => {
+		const makeEvent = () => createTraceItem({
+			outcome: 'ok',
+			exceptions: [],
+			logs: [
+				{ level: 'warn', message: ['Same warning message'], timestamp: Date.now() },
+			],
+		});
+
+		await handleTailEvents([makeEvent()], env, ctx);
+		await handleTailEvents([makeEvent()], env, ctx);
+
+		const today = new Date().toISOString().slice(0, 10);
+		const digest = JSON.parse((await env.CF_MONITOR_KV.get(`warn:digest:${today}`))!);
+		expect(digest).toHaveLength(1); // Not 2
+	});
+
+	it('processes both soft errors and warnings from the same event', async () => {
+		const event = createTraceItem({
+			outcome: 'ok',
+			exceptions: [],
+			logs: [
+				{ level: 'error', message: ['Real error'], timestamp: Date.now() },
+				{ level: 'warn', message: ['Just a warning'], timestamp: Date.now() },
+			],
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		// Soft error creates GitHub issue
+		expect(mockFetch).toHaveBeenCalledOnce();
+
+		// Warning stored in digest
+		const today = new Date().toISOString().slice(0, 10);
+		const digest = JSON.parse((await env.CF_MONITOR_KV.get(`warn:digest:${today}`))!);
+		expect(digest).toHaveLength(1);
+	});
+
+	it('ignores ok events with no error or warn logs', async () => {
+		const event = createTraceItem({
+			outcome: 'ok',
+			exceptions: [],
+			logs: [
+				{ level: 'log', message: ['Normal log'], timestamp: Date.now() },
+			],
+		});
+
+		await handleTailEvents([event], env, ctx);
+		expect(mockFetch).not.toHaveBeenCalled();
+	});
+});

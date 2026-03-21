@@ -55,6 +55,9 @@ export const KV = {
 	ERR_LOCK: 'err:lock:',
 	ERR_TRANSIENT: 'err:transient:',
 
+	// Warning digest (daily batching for P4 warnings)
+	WARN_DIGEST: 'warn:digest:',
+
 	// Gap detection
 	GAP_ALERT: 'gap:alert:',
 
