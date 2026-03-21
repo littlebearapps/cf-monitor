@@ -2,6 +2,16 @@
 
 All notable changes to cf-monitor are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-03-21
+
+### Added
+- Comprehensive public documentation suite: README rewrite with badges, benefit-first "Why" section, and corrected auto-detection docs
+- CONTRIBUTING.md, CHANGELOG.md, SECURITY.md, CODE_OF_CONDUCT.md
+- docs/getting-started.md, docs/configuration.md, docs/troubleshooting.md
+- docs/guides/: error-collection, budgets-and-circuit-breakers, cost-protection
+- GitHub issue templates (bug report, feature request) and PR template
+- 4 previously untracked integration test files (01-health, 02-consumer-sdk, 03-circuit-breaker, 06-budget)
+
 ## [0.2.0] - 2026-03-21
 
 ### Added
@@ -57,5 +67,6 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
+[0.2.1]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/littlebearapps/cf-monitor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/littlebearapps/cf-monitor/releases/tag/v0.1.0
