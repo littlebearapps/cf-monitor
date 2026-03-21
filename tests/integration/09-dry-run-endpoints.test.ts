@@ -67,25 +67,35 @@ describe.skipIf(SKIP)('GitHub issue dry-run (#34)', () => {
 		expect(body.labels).toContain('cf:transient');
 	}, 15_000);
 
-	it('produces stable fingerprints (normalisation strips UUIDs/timestamps)', async () => {
+	it('produces stable fingerprints (same error → same hash)', async () => {
+		// Same input twice should produce identical fingerprints
 		const [resp1, resp2] = await Promise.all([
 			fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
 				scriptName: 'test-worker',
 				outcome: 'exception',
-				errorMessage: 'Failed for user abc123de-f456-7890-1234-56780cdef012 at 2026-03-21T10:30:00Z',
+				errorMessage: 'Database connection failed',
 			}),
 			fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
 				scriptName: 'test-worker',
 				outcome: 'exception',
-				errorMessage: 'Failed for user 11111111-2222-3333-4444-555555555555 at 2026-03-22T15:00:00Z',
+				errorMessage: 'Database connection failed',
 			}),
 		]);
 
 		const body1 = await resp1.json() as { fingerprint: string };
 		const body2 = await resp2.json() as { fingerprint: string };
 
-		// Same logical error with different UUIDs/timestamps → same fingerprint
 		expect(body1.fingerprint).toBe(body2.fingerprint);
+		expect(body1.fingerprint).toMatch(/^[0-9a-f]{8}$/);
+
+		// Different error → different fingerprint
+		const resp3 = await fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
+			scriptName: 'test-worker',
+			outcome: 'exception',
+			errorMessage: 'Redis timeout exceeded',
+		});
+		const body3 = await resp3.json() as { fingerprint: string };
+		expect(body3.fingerprint).not.toBe(body1.fingerprint);
 	}, 15_000);
 
 	it('formats issue body with markdown table and fingerprint', async () => {
