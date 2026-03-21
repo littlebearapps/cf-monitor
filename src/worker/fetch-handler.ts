@@ -1,5 +1,12 @@
 import { KV } from '../constants.js';
 import type { MonitorWorkerEnv } from '../types.js';
+import { collectAccountMetrics } from './crons/collect-metrics.js';
+import { checkBudgets } from './crons/budget-check.js';
+import { detectGaps } from './crons/gap-detection.js';
+import { detectCostSpikes } from './crons/cost-spike.js';
+import { discoverWorkers } from './crons/worker-discovery.js';
+import { runDailyRollup } from './crons/daily-rollup.js';
+import { runSyntheticHealthCheck } from './crons/synthetic-health.js';
 
 /**
  * API endpoints for the cf-monitor worker.
@@ -22,6 +29,7 @@ export async function handleFetch(
 	// POST routes
 	if (request.method === 'POST') {
 		if (path === '/webhooks/github') return handleGitHubWebhook(request, env);
+		if (path.startsWith('/admin/cron/')) return handleAdminCronTrigger(path, env);
 		return Response.json({ error: 'Not found' }, { status: 404 });
 	}
 
@@ -133,6 +141,49 @@ async function handleWorkers(env: MonitorWorkerEnv): Promise<Response> {
 		count: workers.length,
 		timestamp: Date.now(),
 	});
+}
+
+// =============================================================================
+// ADMIN: MANUAL CRON TRIGGERS (for testing)
+// =============================================================================
+
+const CRON_HANDLERS: Record<string, (env: MonitorWorkerEnv) => Promise<void>> = {
+	'gap-detection': detectGaps,
+	'budget-check': checkBudgets,
+	'cost-spike': detectCostSpikes,
+	'metrics': collectAccountMetrics,
+	'synthetic-health': runSyntheticHealthCheck,
+	'worker-discovery': discoverWorkers,
+	'daily-rollup': runDailyRollup,
+};
+
+async function handleAdminCronTrigger(path: string, env: MonitorWorkerEnv): Promise<Response> {
+	const cronName = path.replace('/admin/cron/', '');
+	const handler = CRON_HANDLERS[cronName];
+
+	if (!handler) {
+		return Response.json({
+			error: `Unknown cron: ${cronName}`,
+			available: Object.keys(CRON_HANDLERS),
+		}, { status: 400 });
+	}
+
+	const start = Date.now();
+	try {
+		await handler(env);
+		return Response.json({
+			ok: true,
+			cron: cronName,
+			durationMs: Date.now() - start,
+		});
+	} catch (err) {
+		return Response.json({
+			ok: false,
+			cron: cronName,
+			error: String(err),
+			durationMs: Date.now() - start,
+		}, { status: 500 });
+	}
 }
 
 // =============================================================================
