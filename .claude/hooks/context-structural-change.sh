@@ -1,0 +1,83 @@
+#!/bin/bash
+# context-structural-change.sh
+# Hook: PostToolUse (Write|Edit, matching structural files)
+# Purpose: Remind about context file updates after structural changes
+# Installed by: /contextdocs:context-guard install
+#
+# Claude Code only — OpenCode, Codex CLI, Cursor, and other tools
+# do not support Claude Code hooks.
+
+set -euo pipefail
+
+# Read hook input from stdin
+INPUT=$(cat)
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
+
+# Only process Write and Edit
+[[ "$TOOL_NAME" != "Write" && "$TOOL_NAME" != "Edit" ]] && echo '{}' && exit 0
+[ -z "$FILE_PATH" ] && echo '{}' && exit 0
+
+# Resolve project directory
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+cd "$PROJECT_DIR" || { echo '{}'; exit 0; }
+
+# Check if any context files exist (no point reminding if none are tracked)
+HAS_CONTEXT=false
+for CTX in CLAUDE.md AGENTS.md GEMINI.md .cursorrules .github/copilot-instructions.md llms.txt .windsurfrules .clinerules; do
+  [ -f "$CTX" ] && HAS_CONTEXT=true && break
+done
+[ "$HAS_CONTEXT" = false ] && echo '{}' && exit 0
+
+# Determine what type of structural change this is
+MSG=""
+# Extract just the filename/relative portion for matching
+# Claude Code may pass absolute or relative paths
+REL_PATH="${FILE_PATH##"$PROJECT_DIR"/}"
+REL_PATH="${REL_PATH#/}"
+
+case "$REL_PATH" in
+  commands/*.md)
+    MSG="You modified a command definition. Update AGENTS.md first, then refresh CLAUDE.md, llms.txt, or any tool-specific bridges that mention this command."
+    ;;
+  .claude/skills/*/SKILL.md|.agents/skills/*/SKILL.md)
+    MSG="You modified a skill. Update AGENTS.md first, then refresh CLAUDE.md, llms.txt, or any affected bridge files."
+    ;;
+  .claude/agents/context-updater.md)
+    # Context Guard's own agent — not a project structural change
+    echo '{}'; exit 0
+    ;;
+  .claude/agents/*.md|.agents/agents/*.md)
+    MSG="You modified an agent definition. AGENTS.md and llms.txt may need updating."
+    ;;
+  .claude/rules/context-quality.md|.claude/rules/context-awareness.md|.claude/rules/docs-awareness.md|.claude/rules/doc-standards.md)
+    # Context Guard / PitchDocs infrastructure rules — not project structural changes
+    echo '{}'; exit 0
+    ;;
+  .claude/rules/*.md)
+    MSG="You modified a rule. Update AGENTS.md first, then refresh CLAUDE.md or other bridge files only if they reference this rule."
+    ;;
+  package.json|*/package.json|pyproject.toml|*/pyproject.toml|Cargo.toml|*/Cargo.toml|go.mod|*/go.mod)
+    MSG="Project manifest changed. Update AGENTS.md first, then refresh only the bridge files whose tool-specific commands or notes changed."
+    ;;
+  tsconfig*.json|*/tsconfig*.json|wrangler.toml|*/wrangler.toml|vitest.config*|*/vitest.config*|jest.config*|*/jest.config*|eslint.config*|*/eslint.config*|biome.json|*/biome.json)
+    MSG="Build/test/lint configuration changed. Update AGENTS.md first, then refresh any bridge files with tool-specific tooling notes."
+    ;;
+  *)
+    echo '{}'; exit 0
+    ;;
+esac
+
+if [ -n "$MSG" ]; then
+  MSG_JSON=$(printf '%s' "$MSG" | sed 's/"/\\"/g')
+  cat << EOF
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PostToolUse",
+    "additionalContext": "CONTEXT REMINDER: $MSG_JSON When your current task is complete, launch the context-updater agent to apply these updates automatically."
+  }
+}
+EOF
+else
+  echo '{}'
+fi

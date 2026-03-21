@@ -4,3 +4,10 @@ dist/
 *.tsbuildinfo
 .wrangler/
 .dev.vars
+
+# MCP profiles (generated, not committed)
+.mcp.json
+.mcp.*.json
+
+# Claude Code local settings (user-specific)
+.claude/settings.local.json
