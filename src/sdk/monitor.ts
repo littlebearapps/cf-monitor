@@ -324,7 +324,7 @@ async function flushTelemetry<Env extends object>(trackedEnv: TrackedEnv<Env>): 
 	}
 }
 
-/** Increment daily KV budget counters for budget enforcement. */
+/** Increment daily and monthly KV budget counters for budget enforcement. */
 async function accumulateBudgetUsage<Env extends object>(
 	trackedEnv: TrackedEnv<Env>,
 	featureId: string,
@@ -336,23 +336,36 @@ async function accumulateBudgetUsage<Env extends object>(
 			| undefined;
 		if (!kv) return;
 
-		const today = new Date().toISOString().slice(0, 10);
-		const key = `${KV.BUDGET_DAILY}${featureId}:${today}`;
+		const now = new Date();
+		const today = now.toISOString().slice(0, 10);
+		const month = now.toISOString().slice(0, 7); // YYYY-MM
 
-		const currentRaw = await kv.get(key);
-		const current: Record<string, number> = currentRaw ? JSON.parse(currentRaw) : {};
+		const dailyKey = `${KV.BUDGET_DAILY}${featureId}:${today}`;
+		const monthlyKey = `${KV.BUDGET_MONTHLY}${featureId}:${month}`;
+
+		const [dailyRaw, monthlyRaw] = await Promise.all([
+			kv.get(dailyKey),
+			kv.get(monthlyKey),
+		]);
+
+		const daily: Record<string, number> = dailyRaw ? JSON.parse(dailyRaw) : {};
+		const monthly: Record<string, number> = monthlyRaw ? JSON.parse(monthlyRaw) : {};
 
 		let changed = false;
 		for (const [metricsKey, budgetKey] of Object.entries(METRICS_TO_BUDGET)) {
 			const value = metrics[metricsKey as keyof MetricsAccumulator] as number;
 			if (value > 0) {
-				current[budgetKey] = (current[budgetKey] ?? 0) + value;
+				daily[budgetKey] = (daily[budgetKey] ?? 0) + value;
+				monthly[budgetKey] = (monthly[budgetKey] ?? 0) + value;
 				changed = true;
 			}
 		}
 
 		if (changed) {
-			await kv.put(key, JSON.stringify(current), { expirationTtl: 90000 }); // 25hr TTL
+			await Promise.all([
+				kv.put(dailyKey, JSON.stringify(daily), { expirationTtl: 90000 }), // 25hr TTL
+				kv.put(monthlyKey, JSON.stringify(monthly), { expirationTtl: 2_764_800 }), // 32 days
+			]);
 		}
 	} catch {
 		// Fail open — budget accumulation is best-effort

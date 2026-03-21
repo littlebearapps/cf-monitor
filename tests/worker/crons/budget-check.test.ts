@@ -42,7 +42,17 @@ async function setFeatureUsage(featureId: string, usage: Record<string, number>)
 	await env.CF_MONITOR_KV.put(`${KV.BUDGET_DAILY}${featureId}:${today}`, JSON.stringify(usage));
 }
 
-describe('checkBudgets', () => {
+const month = new Date().toISOString().slice(0, 7);
+
+async function setMonthlyBudget(featureId: string, config: Record<string, number>): Promise<void> {
+	await env.CF_MONITOR_KV.put(`budget:config:monthly:${featureId}`, JSON.stringify(config));
+}
+
+async function setMonthlyUsage(featureId: string, usage: Record<string, number>): Promise<void> {
+	await env.CF_MONITOR_KV.put(`${KV.BUDGET_MONTHLY}${featureId}:${month}`, JSON.stringify(usage));
+}
+
+describe('checkBudgets — daily', () => {
 	it('does nothing when no budget configs exist', async () => {
 		await checkBudgets(env);
 		expect(tripFeatureCb).not.toHaveBeenCalled();
@@ -111,5 +121,65 @@ describe('checkBudgets', () => {
 
 		expect(tripFeatureCb).not.toHaveBeenCalled();
 		expect(sendSlackAlert).toHaveBeenCalledOnce(); // Only feature-b
+	});
+});
+
+describe('checkBudgets — monthly (#13)', () => {
+	it('does nothing when no monthly configs exist', async () => {
+		await checkBudgets(env);
+		expect(tripFeatureCb).not.toHaveBeenCalled();
+	});
+
+	it('does nothing at 60% monthly usage', async () => {
+		await setMonthlyBudget('my-feature', { d1_writes: 1_000_000 });
+		await setMonthlyUsage('my-feature', { d1_writes: 600_000 });
+
+		await checkBudgets(env);
+
+		expect(tripFeatureCb).not.toHaveBeenCalled();
+		expect(sendSlackAlert).not.toHaveBeenCalled();
+	});
+
+	it('sends Slack warning at 70% monthly usage', async () => {
+		await setMonthlyBudget('my-feature', { d1_writes: 1_000_000 });
+		await setMonthlyUsage('my-feature', { d1_writes: 750_000 });
+
+		await checkBudgets(env);
+
+		expect(sendSlackAlert).toHaveBeenCalledOnce();
+	});
+
+	it('trips CB at 100% monthly usage', async () => {
+		await setMonthlyBudget('my-feature', { d1_writes: 1_000_000 });
+		await setMonthlyUsage('my-feature', { d1_writes: 1_050_000 });
+
+		await checkBudgets(env);
+
+		expect(tripFeatureCb).toHaveBeenCalledWith(
+			env.CF_MONITOR_KV,
+			'my-feature',
+			expect.stringContaining('monthly')
+		);
+		expect(sendSlackAlert).toHaveBeenCalled();
+	});
+
+	it('daily and monthly budgets are checked independently', async () => {
+		// Daily: fine
+		await setFeatureBudget('my-feature', { d1_writes: 100_000 });
+		await setFeatureUsage('my-feature', { d1_writes: 50_000 }); // 50%
+
+		// Monthly: over budget
+		await setMonthlyBudget('my-feature', { d1_writes: 1_000_000 });
+		await setMonthlyUsage('my-feature', { d1_writes: 1_100_000 }); // 110%
+
+		await checkBudgets(env);
+
+		// CB tripped for monthly, not daily
+		expect(tripFeatureCb).toHaveBeenCalledOnce();
+		expect(tripFeatureCb).toHaveBeenCalledWith(
+			env.CF_MONITOR_KV,
+			'my-feature',
+			expect.stringContaining('monthly')
+		);
 	});
 });
