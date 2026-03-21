@@ -72,7 +72,7 @@ describe.skipIf(SKIP)('GitHub issue dry-run (#34)', () => {
 			fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
 				scriptName: 'test-worker',
 				outcome: 'exception',
-				errorMessage: 'Failed for user abc123de-f456-7890-1234-5678abcdef01 at 2026-03-21T10:30:00Z',
+				errorMessage: 'Failed for user abc123de-f456-7890-1234-56780cdef012 at 2026-03-21T10:30:00Z',
 			}),
 			fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
 				scriptName: 'test-worker',
