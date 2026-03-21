@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/littlebearapps/cf-monitor/cf-monitor.schema.json",
+  "title": "cf-monitor Configuration",
+  "description": "Configuration schema for cf-monitor.yaml — per-account Cloudflare monitoring.",
+  "type": "object",
+  "properties": {
+    "account": {
+      "type": "object",
+      "description": "Cloudflare account settings.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable account name (used in alerts and dashboards)."
+        },
+        "cloudflare_account_id": {
+          "type": "string",
+          "description": "Cloudflare account ID. Supports $ENV_VAR references.",
+          "pattern": "^(\\$[A-Z_][A-Z0-9_]*|[0-9a-f]{32})$"
+        }
+      },
+      "required": ["name", "cloudflare_account_id"]
+    },
+    "github": {
+      "type": "object",
+      "description": "GitHub integration for error issue tracking.",
+      "properties": {
+        "repo": {
+          "type": "string",
+          "description": "GitHub repository (owner/repo format).",
+          "pattern": "^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$"
+        },
+        "token": {
+          "type": "string",
+          "description": "GitHub Personal Access Token. Use $GITHUB_TOKEN env var reference.",
+          "pattern": "^(\\$[A-Z_][A-Z0-9_]*|ghp_[a-zA-Z0-9]+)$"
+        },
+        "webhook_secret": {
+          "type": "string",
+          "description": "HMAC secret for GitHub webhook verification. Use $GITHUB_WEBHOOK_SECRET."
+        }
+      },
+      "required": ["repo", "token"]
+    },
+    "alerts": {
+      "type": "object",
+      "description": "Alert notification channels.",
+      "properties": {
+        "slack_webhook_url": {
+          "type": "string",
+          "description": "Slack incoming webhook URL. Use $SLACK_WEBHOOK_URL env var reference."
+        },
+        "email": {
+          "type": "object",
+          "description": "Email alert configuration (optional).",
+          "properties": {
+            "to": {
+              "type": "string",
+              "format": "email",
+              "description": "Recipient email address."
+            },
+            "provider": {
+              "type": "string",
+              "enum": ["resend", "sendgrid", "generic"],
+              "description": "Email service provider."
+            },
+            "api_key": {
+              "type": "string",
+              "description": "Email provider API key. Use $EMAIL_API_KEY env var reference."
+            }
+          },
+          "required": ["to", "provider", "api_key"]
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "description": "Monitoring behaviour configuration.",
+      "properties": {
+        "gap_detection_minutes": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 60,
+          "default": 15,
+          "description": "Interval for gap detection cron (minutes)."
+        },
+        "heartbeat_url": {
+          "type": "string",
+          "description": "Gatus heartbeat URL. Use $GATUS_HEARTBEAT_URL."
+        },
+        "heartbeat_token": {
+          "type": "string",
+          "description": "Gatus auth token. Use $GATUS_TOKEN."
+        },
+        "spike_threshold": {
+          "type": "number",
+          "minimum": 1.5,
+          "default": 2.0,
+          "description": "Cost spike alert threshold (multiplier above baseline)."
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "description": "Resource budget limits.",
+      "properties": {
+        "daily": {
+          "type": "object",
+          "description": "Daily budget limits per metric.",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Daily limit for this metric."
+          }
+        },
+        "monthly": {
+          "type": "object",
+          "description": "Monthly budget limits per metric.",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Monthly limit for this metric."
+          }
+        }
+      }
+    },
+    "exclude": {
+      "type": "array",
+      "description": "Worker name patterns to exclude from monitoring.",
+      "items": {
+        "type": "string",
+        "description": "Glob pattern (e.g. '*-dev', 'test-*')."
+      }
+    },
+    "ai": {
+      "type": "object",
+      "description": "Optional AI-powered features (requires Workers AI binding).",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable AI features globally."
+        },
+        "pattern_discovery": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable AI-powered transient error pattern discovery."
+        },
+        "health_reports": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable AI-generated health report summaries."
+        },
+        "coverage_auditor": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable AI-powered SDK coverage auditing."
+        },
+        "model": {
+          "type": "string",
+          "default": "@cf/meta/llama-4-scout-17b-16e-instruct",
+          "description": "Workers AI model for AI features (free tier recommended)."
+        }
+      }
+    }
+  },
+  "required": ["account"]
+}
