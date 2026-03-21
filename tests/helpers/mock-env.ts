@@ -46,6 +46,8 @@ export interface MockConsumerEnv {
 	AI: ReturnType<typeof createMockAI>;
 	MY_INDEX: ReturnType<typeof createMockVectorize>;
 	MY_QUEUE: ReturnType<typeof createMockQueue>;
+	MY_DO: ReturnType<typeof createMockDurableObjectNamespace>;
+	MY_WORKFLOW: ReturnType<typeof createMockWorkflow>;
 }
 
 export function createMockConsumerEnv(
@@ -61,6 +63,8 @@ export function createMockConsumerEnv(
 		AI: createMockAI(),
 		MY_INDEX: createMockVectorize(),
 		MY_QUEUE: createMockQueue(),
+		MY_DO: createMockDurableObjectNamespace(),
+		MY_WORKFLOW: createMockWorkflow(),
 		...overrides,
 	};
 }
@@ -136,5 +140,30 @@ export function createMockQueue() {
 	return {
 		send: vi.fn().mockResolvedValue(undefined),
 		sendBatch: vi.fn().mockResolvedValue(undefined),
+	};
+}
+
+/** Mock Durable Object Namespace — has get/idFromName/idFromString (matches isDurableObjectNamespace). */
+export function createMockDurableObjectNamespace() {
+	const mockStub = {
+		fetch: vi.fn().mockResolvedValue(new Response('ok')),
+		id: { toString: () => 'test-id' },
+		name: 'test-do',
+	};
+
+	return {
+		get: vi.fn().mockReturnValue(mockStub),
+		idFromName: vi.fn().mockReturnValue({ toString: () => 'test-id' }),
+		idFromString: vi.fn().mockReturnValue({ toString: () => 'test-id' }),
+		newUniqueId: vi.fn().mockReturnValue({ toString: () => 'new-id' }),
+		_stub: mockStub,
+	};
+}
+
+/** Mock Workflow — has create/get but NOT put (matches isWorkflow). */
+export function createMockWorkflow() {
+	return {
+		create: vi.fn().mockResolvedValue({ id: 'wf-123' }),
+		get: vi.fn().mockResolvedValue({ id: 'wf-123', status: 'running' }),
 	};
 }

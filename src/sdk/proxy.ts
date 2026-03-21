@@ -39,6 +39,8 @@ export function createTrackedEnv<Env extends object>(
 			if (isAiBinding(value)) return wrapAI(value, metrics, limits);
 			if (isVectorize(value)) return wrapVectorize(value, metrics, limits);
 			if (isQueue(value)) return wrapQueue(value, metrics, limits);
+			if (isDurableObjectNamespace(value)) return wrapDurableObject(value, metrics, limits);
+			if (isWorkflow(value)) return wrapWorkflow(value, metrics);
 
 			return value;
 		},
@@ -363,6 +365,78 @@ function wrapQueue(queue: unknown, metrics: MetricsAccumulator, limits?: Request
 					const messages = args[0] as unknown[];
 					metrics.queueMessages += Array.isArray(messages) ? messages.length : 1;
 					checkLimit('queueMessages', metrics.queueMessages, limits);
+					return (original as Function).apply(target, args);
+				};
+			}
+			return original.bind(target);
+		},
+	});
+}
+
+// =============================================================================
+// DURABLE OBJECT PROXY (#12)
+// =============================================================================
+
+function isDurableObjectNamespace(v: unknown): boolean {
+	const obj = v as Record<string, unknown>;
+	return typeof obj.get === 'function' && typeof obj.idFromName === 'function';
+}
+
+function wrapDurableObject(ns: unknown, metrics: MetricsAccumulator, limits?: RequestLimits): unknown {
+	return new Proxy(ns as object, {
+		get(target, prop) {
+			const original = Reflect.get(target, prop);
+			if (typeof original !== 'function') return original;
+
+			if (prop === 'get') {
+				return (...args: unknown[]) => {
+					const stub = (original as Function).apply(target, args);
+					// Wrap the stub's fetch() to track doRequests
+					return wrapDurableObjectStub(stub, metrics, limits);
+				};
+			}
+			return original.bind(target);
+		},
+	});
+}
+
+function wrapDurableObjectStub(stub: unknown, metrics: MetricsAccumulator, limits?: RequestLimits): unknown {
+	return new Proxy(stub as object, {
+		get(target, prop) {
+			const original = Reflect.get(target, prop);
+			if (typeof original !== 'function') return original;
+
+			// Wrap fetch() calls on the stub
+			if (prop === 'fetch') {
+				return async (...args: unknown[]) => {
+					metrics.doRequests++;
+					checkLimit('doRequests', metrics.doRequests, limits);
+					return (original as Function).apply(target, args);
+				};
+			}
+			return original.bind(target);
+		},
+	});
+}
+
+// =============================================================================
+// WORKFLOW PROXY (#12)
+// =============================================================================
+
+function isWorkflow(v: unknown): boolean {
+	const obj = v as Record<string, unknown>;
+	return typeof obj.create === 'function' && typeof obj.get === 'function' && !('put' in obj);
+}
+
+function wrapWorkflow(wf: unknown, metrics: MetricsAccumulator): unknown {
+	return new Proxy(wf as object, {
+		get(target, prop) {
+			const original = Reflect.get(target, prop);
+			if (typeof original !== 'function') return original;
+
+			if (prop === 'create') {
+				return async (...args: unknown[]) => {
+					metrics.workflowInvocations++;
 					return (original as Function).apply(target, args);
 				};
 			}

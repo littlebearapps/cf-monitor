@@ -210,3 +210,54 @@ describe('monitor binding skip', () => {
 		expect((te as any).CF_MONITOR_AE).toBe(env.CF_MONITOR_AE);
 	});
 });
+
+describe('Durable Object proxy (#12)', () => {
+	it('namespace.get(id).fetch() increments doRequests', async () => {
+		const { te, metrics } = tracked();
+		const id = (te as any).MY_DO.idFromName('room-1');
+		const stub = (te as any).MY_DO.get(id);
+		await stub.fetch(new Request('http://internal/'));
+		expect(metrics().doRequests).toBe(1);
+	});
+
+	it('multiple fetch() calls accumulate', async () => {
+		const { te, metrics } = tracked();
+		const id = (te as any).MY_DO.idFromName('room-1');
+		const stub = (te as any).MY_DO.get(id);
+		await stub.fetch(new Request('http://internal/a'));
+		await stub.fetch(new Request('http://internal/b'));
+		await stub.fetch(new Request('http://internal/c'));
+		expect(metrics().doRequests).toBe(3);
+	});
+
+	it('throws RequestBudgetExceededError when doRequests limit exceeded', async () => {
+		const { te } = tracked({ doRequests: 1 });
+		const id = (te as any).MY_DO.idFromName('room-1');
+		const stub = (te as any).MY_DO.get(id);
+		await stub.fetch(new Request('http://internal/1'));
+		await expect(stub.fetch(new Request('http://internal/2'))).rejects.toThrow(
+			RequestBudgetExceededError
+		);
+	});
+});
+
+describe('Workflow proxy (#12)', () => {
+	it('workflow.create() increments workflowInvocations', async () => {
+		const { te, metrics } = tracked();
+		await (te as any).MY_WORKFLOW.create({ params: {} });
+		expect(metrics().workflowInvocations).toBe(1);
+	});
+
+	it('workflow.get() does NOT increment (read-only)', async () => {
+		const { te, metrics } = tracked();
+		await (te as any).MY_WORKFLOW.get('wf-123');
+		expect(metrics().workflowInvocations).toBe(0);
+	});
+
+	it('multiple creates accumulate', async () => {
+		const { te, metrics } = tracked();
+		await (te as any).MY_WORKFLOW.create({ params: {} });
+		await (te as any).MY_WORKFLOW.create({ params: {} });
+		expect(metrics().workflowInvocations).toBe(2);
+	});
+});
