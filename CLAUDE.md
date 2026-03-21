@@ -38,7 +38,7 @@
 | **Language** | TypeScript |
 | **Runtime** | Cloudflare Workers |
 | **npm** | `@littlebearapps/cf-monitor` |
-| **Status** | v0.2.0 — production-tested on Platform account |
+| **Status** | v0.2.1 — production-tested, published to npm |
 | **Repository** | https://github.com/littlebearapps/cf-monitor |
 | **Licence** | MIT |
 | **Issues** | https://github.com/littlebearapps/cf-monitor/issues |
@@ -46,7 +46,7 @@
 **Quick Commands**:
 ```bash
 npm test                    # Run unit tests (222 tests, vitest)
-npm run test:integration    # Run integration tests (36 tests, needs CF credentials)
+npm run test:integration    # Run integration tests (53 tests across 10 files, needs CF credentials)
 npm run typecheck           # TypeScript check (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
 npm pack --dry-run          # Verify package contents
@@ -99,16 +99,16 @@ cf-monitor/
 │
 ├── vitest.integration.config.ts  # Integration test config (globalSetup, 120s timeout)
 │
-└── tests/                    # 222 unit tests + 36 integration tests
+└── tests/                    # 222 unit tests + 53 integration tests
     ├── helpers/               # Mock KV, AE, env, request factories
     ├── sdk/                   # monitor, proxy, metrics, detection, circuit-breaker
     ├── worker/                # tail, fetch, scheduled, config, ae-client, crons, errors
     ├── cli/                   # wrangler-generator, cloudflare-api
-    └── integration/           # 8 test files — deploys real workers to CF with test- prefix
+    └── integration/           # 10 test files — deploys real workers to CF with test- prefix
         ├── setup.ts           # Global setup/teardown (deploy once)
-        ├── helpers.ts         # CF API helpers, KV operations, webhook signing
-        ├── test-consumer.ts   # 10-route consumer worker for testing
-        └── 01-08*.test.ts     # Sequential: health, SDK, CB, telemetry, errors, budgets, crons, webhooks
+        ├── helpers.ts         # CF API helpers, KV operations, AE SQL queries, webhook signing
+        ├── test-consumer.ts   # 13-route consumer worker for testing
+        └── 01-10*.test.ts     # Sequential: health, SDK, CB, telemetry, webhooks, budgets, crons, errors, dry-run, proxy-tracking
 ```
 
 ---
@@ -222,7 +222,7 @@ Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
 
 **#30 — Feature ID format**: FIXED. Added `featureId` (single ID for all routes) and `featurePrefix` (replaces worker name in auto-generated IDs). Precedence: `featureId` → `features` map → auto-generate with `featurePrefix ?? workerName`.
 
-**#26 — Integration test suite**: IMPLEMENTED. 36 tests across 8 files covering all features. Deploys real workers with `test-` prefix to Platform CF account. CI: runs on push to main + workflow_dispatch.
+**#26 — Integration test suite**: IMPLEMENTED. 53 tests across 10 files covering all features. Deploys real workers with `test-` prefix to Platform CF account. CI: runs on push to main + workflow_dispatch.
 
 ---
 
