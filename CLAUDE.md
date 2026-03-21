@@ -38,7 +38,7 @@
 | **Language** | TypeScript |
 | **Runtime** | Cloudflare Workers |
 | **npm** | `@littlebearapps/cf-monitor` |
-| **Status** | Early development (v0.1.0) |
+| **Status** | v0.2.0 — production-tested on Platform account |
 | **Repository** | https://github.com/littlebearapps/cf-monitor |
 | **Licence** | MIT |
 | **Issues** | https://github.com/littlebearapps/cf-monitor/issues |
@@ -60,7 +60,7 @@ cf-monitor/
 ├── package.json              # @littlebearapps/cf-monitor
 ├── tsconfig.json             # Workers runtime types
 ├── tsconfig.cli.json         # Node16 types for CLI
-├── cf-monitor.schema.json    # JSON Schema for config validation (TODO)
+├── cf-monitor.schema.json    # JSON Schema for config validation
 │
 ├── src/
 │   ├── index.ts              # Single public export: monitor()
@@ -69,7 +69,7 @@ cf-monitor/
 │   │
 │   ├── sdk/                  # Runtime SDK (installed in consumer workers)
 │   │   ├── monitor.ts        # monitor() wrapper — main entry point
-│   │   ├── proxy.ts          # Binding proxies (D1, KV, R2, AI, Vectorize, Queue)
+│   │   ├── proxy.ts          # Binding proxies (D1, KV, R2, AI, Vectorize, Queue, DO, Workflow)
 │   │   ├── metrics.ts        # MetricsAccumulator + AE data point conversion
 │   │   ├── circuit-breaker.ts # CB check/trip/reset via KV
 │   │   ├── detection.ts      # Auto-detect worker name, bindings, feature IDs
@@ -81,7 +81,7 @@ cf-monitor/
 │   │   ├── index.ts          # Export: { fetch, scheduled, tail }
 │   │   ├── tail-handler.ts   # Error capture → fingerprint → GitHub issue
 │   │   ├── scheduled-handler.ts # Cron multiplexer
-│   │   ├── fetch-handler.ts  # API: /status, /errors, /budgets, /workers
+│   │   ├── fetch-handler.ts  # API: /status, /errors, /budgets, /workers + admin cron triggers + GitHub webhooks
 │   │   ├── crons/            # Cron handlers (metrics, budgets, gaps, discovery)
 │   │   ├── errors/           # Fingerprinting, patterns, GitHub issue CRUD
 │   │   ├── alerts/           # Slack alerts with dedup
@@ -89,17 +89,18 @@ cf-monitor/
 │   │
 │   └── cli/                  # CLI: npx cf-monitor <command>
 │       ├── index.ts          # Commander setup
-│       ├── commands/          # init, deploy, wire, status, coverage
+│       ├── commands/          # init, deploy, wire, status, coverage, secret, config-sync, upgrade, migrate
 │       ├── wrangler-generator.ts
 │       └── cloudflare-api.ts
 │
 ├── worker/                   # Pre-built entry for wrangler deploy
 │   └── index.ts
 │
-└── tests/                    # Vitest tests (TODO)
-    ├── sdk/
-    ├── worker/
-    └── cli/
+└── tests/                    # 213 Vitest tests (~75% coverage)
+    ├── helpers/               # Mock KV, AE, env, request factories
+    ├── sdk/                   # monitor, proxy, metrics, detection, circuit-breaker
+    ├── worker/                # tail, fetch, scheduled, config, ae-client, crons, errors
+    └── cli/                   # wrangler-generator, cloudflare-api
 ```
 
 ---
@@ -120,10 +121,10 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | Handler | Schedule | Purpose |
 |---------|----------|---------|
 | `tail()` | Real-time | Error capture from all tailed workers |
-| `scheduled()` | `*/15 * * * *` | Gap detection |
-| `scheduled()` | `0 * * * *` | CF GraphQL metrics, budget enforcement, synthetic CB health |
-| `scheduled()` | `0 0 * * *` | Daily rollup, worker discovery |
-| `fetch()` | On-demand | API: /status, /errors, /budgets, /workers, /_health |
+| `scheduled()` | `*/15 * * * *` | Gap detection, cost spike detection |
+| `scheduled()` | `0 * * * *` | CF GraphQL metrics, budget enforcement (daily+monthly), synthetic CB health |
+| `scheduled()` | `0 0 * * *` | Daily rollup + warning digest, worker discovery |
+| `fetch()` | On-demand | API: /status, /errors, /budgets, /workers, /_health, /admin/cron/*, /webhooks/github |
 
 ### Storage Model
 
@@ -138,10 +139,16 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | `cb:v1:feature:` | Circuit breaker per feature |
 | `cb:v1:account` | Account-level CB |
 | `budget:config:` | Feature budget limits |
+| `budget:config:monthly:` | Monthly budget limits |
 | `budget:usage:daily:` | Daily usage counters |
+| `budget:usage:monthly:` | Monthly usage counters |
+| `budget:warn:` | Alert dedup (budget + gap) |
 | `err:fp:` | Error fingerprint → GitHub issue URL |
 | `err:rate:` | Per-script error rate limit |
+| `err:transient:` | Transient error dedup (1/day) |
+| `warn:digest:` | P4 warning daily digest batch |
 | `workers:` | Auto-discovered worker registry |
+| `workers:{name}:last_seen` | SDK heartbeat timestamp |
 
 ---
 
@@ -151,7 +158,7 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 |---------|------|
 | Public API | `src/index.ts` — exports `monitor()` |
 | Worker wrapper | `src/sdk/monitor.ts` — the main SDK entry point |
-| Binding proxies | `src/sdk/proxy.ts` — D1, KV, R2, AI, Vectorize, Queue tracking |
+| Binding proxies | `src/sdk/proxy.ts` — D1, KV, R2, AI, Vectorize, Queue, DO, Workflow tracking |
 | Types | `src/types.ts` — MonitorConfig, MetricsAccumulator, CircuitBreakerError |
 | Constants | `src/constants.ts` — AE field mapping, KV prefixes, pricing |
 | Monitor worker | `src/worker/index.ts` — single worker entry point |
@@ -179,20 +186,37 @@ When working in cf-monitor, you are building a **public npm package**:
 
 | Project | Relationship |
 |---------|-------------|
-| **Platform** | `~/claude-code-tools/lba/infrastructure/platform/main/` — cf-monitor's predecessor. Contains the workers being replaced. |
+| **Platform** | `~/claude-code-tools/lba/infrastructure/platform/main/` — **First production deployment** (2026-03-21). 18 workers migrated to `monitor()`, cf-monitor worker deployed, full pipeline validated. |
 | **Platform SDKs** | `~/claude-code-tools/lba/infrastructure/platform-sdks/main/` — `@littlebearapps/platform-consumer-sdk` (v3.0.5) that cf-monitor replaces. Source of forked code. |
-| **Scout** | `~/claude-code-tools/lba/scout/` — First target for cf-monitor migration (dedicated CF account). |
-| **Brand Copilot** | `~/claude-code-tools/lba/marketing/brand-copilot/main/` — Second migration target. |
-| **Aus History MCP** | `~/claude-code-tools/lba/apps/mcp-servers/australian-history-mcp/` — Third target (currently dormant). |
-| **ViewPO** | `~/claude-code-tools/lba/apps/devtools/viewpo/main/` — Fourth target (dedicated CF account). |
+| **Scout** | `~/claude-code-tools/lba/scout/` — Next migration target. Migration issue: [scout#234](https://github.com/littlebearapps/scout/issues/234). |
+| **Brand Copilot** | `~/claude-code-tools/lba/marketing/brand-copilot/main/` — Future migration target. |
+| **Aus History MCP** | `~/claude-code-tools/lba/apps/mcp-servers/australian-history-mcp/` — Future target (currently dormant). |
+| **ViewPO** | `~/claude-code-tools/lba/apps/devtools/viewpo/main/` — Future target (dedicated CF account). |
+
+---
+
+## Production Deployment (Platform Account)
+
+Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
+- cf-monitor worker: `cf-monitor.littlebearapps.workers.dev`
+- KV namespace: `fa04a5ab2abf44328638f92e1d13abbe`
+- AE dataset: `cf-monitor`
+- 18 consumer workers migrated from `platformWorker()` to `monitor()`
+- Both `error-collector` and `cf-monitor` receive tail events (parallel testing)
+
+**Known issue**: Consumer workers need `WORKER_NAME` in wrangler vars for proper AE identification (#28).
 
 ---
 
 ## Open Work
 
-See https://github.com/littlebearapps/cf-monitor/issues for all planned features. Key priorities:
+See https://github.com/littlebearapps/cf-monitor/issues for all planned features.
 
-- **Testing** — Vitest setup, SDK unit tests, worker unit tests, CLI tests (#1, #2, #3, #23)
-- **Budget accumulation** — SDK must write daily KV counters for budget-check to read (#25)
-- **Gap detection AE queries** — Replace KV last_seen with AE SQL (#11)
-- **CI pipeline** — GitHub Actions for lint, test, build, publish (#20)
+**Bugs from production testing:**
+- #28 — WORKER_NAME detection falls back to `worker` (workaround: add to wrangler vars)
+- #29 — CB reset via KV delete has ~10s propagation delay
+- #30 — Feature ID format change from platform-sdk (cosmetic, per-route granularity)
+
+**Remaining features:**
+- #26 — Automated integration test in CI
+- #8, #9, #10 — AI optional features (pattern discovery, health reports, coverage auditor)
