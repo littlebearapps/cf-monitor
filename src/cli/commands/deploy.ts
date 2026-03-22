@@ -1,6 +1,6 @@
 import pc from 'picocolors';
 import { existsSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 interface DeployOptions {
 	dryRun?: boolean;
@@ -24,7 +24,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
 	console.log('  Deploying cf-monitor worker...');
 
 	try {
-		const output = execSync(`npx wrangler deploy -c ${wranglerConfig}`, {
+		const output = execFileSync('npx', ['wrangler', 'deploy', '-c', wranglerConfig], {
 			encoding: 'utf-8',
 			stdio: ['inherit', 'pipe', 'pipe'],
 		});

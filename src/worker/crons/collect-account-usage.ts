@@ -13,9 +13,17 @@ const USAGE_DISCLAIMER = 'Approximate — from CF GraphQL Analytics API. Not aut
  * NOT available in GraphQL: AI Gateway, Vectorize, Queues, Workflows, Hyperdrive.
  * These services use REST APIs or dashboard-only metrics — may be added later.
  */
+/** Validate account ID format to prevent GraphQL injection. */
+const ACCOUNT_ID_RE = /^[0-9a-f]{32}$/i;
+
 export async function collectAccountUsage(env: MonitorWorkerEnv): Promise<void> {
 	if (!env.CLOUDFLARE_API_TOKEN || !env.CF_ACCOUNT_ID) {
 		console.warn('[cf-monitor:usage] No CLOUDFLARE_API_TOKEN or CF_ACCOUNT_ID — skipping usage collection');
+		return;
+	}
+
+	if (!ACCOUNT_ID_RE.test(env.CF_ACCOUNT_ID)) {
+		console.error('[cf-monitor:usage] Invalid CF_ACCOUNT_ID format — must be 32-char hex');
 		return;
 	}
 

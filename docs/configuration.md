@@ -227,10 +227,15 @@ alerts:
 Set secrets on the deployed worker:
 
 ```bash
-npx cf-monitor secret GITHUB_TOKEN
-npx cf-monitor secret SLACK_WEBHOOK_URL
-npx cf-monitor secret GITHUB_WEBHOOK_SECRET
+npx cf-monitor secret set CLOUDFLARE_API_TOKEN    # Required — GraphQL, discovery, plan detection
+npx cf-monitor secret set ADMIN_TOKEN              # Recommended — protects /admin/* endpoints
+npx cf-monitor secret set GITHUB_TOKEN             # Optional — error issue creation
+npx cf-monitor secret set SLACK_WEBHOOK_URL        # Optional — budget/error alerts
+npx cf-monitor secret set GITHUB_WEBHOOK_SECRET    # Optional — webhook signature verification
+npx cf-monitor secret set GATUS_TOKEN              # Optional — heartbeat auth
 ```
+
+See [Security — Secrets management](./security.md#secrets-management) for minimum scopes and permissions.
 
 ## JSON Schema Validation
 

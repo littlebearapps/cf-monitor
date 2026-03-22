@@ -212,10 +212,10 @@ The monitor worker exposes these endpoints:
 | GET | `/usage` | Account-wide per-service usage with plan context (approximate) |
 | GET | `/self-health` | Self-monitoring status: stale crons, error counts, handler breakdown |
 | POST | `/webhooks/github` | GitHub webhook receiver (issue close/reopen/mute sync) |
-| POST | `/admin/cron/{name}` | Manually trigger any cron (for testing) |
-| POST | `/admin/cb/trip` | Trip a feature circuit breaker |
-| POST | `/admin/cb/reset` | Reset a feature circuit breaker |
-| POST | `/admin/cb/account` | Set account-level CB status |
+| POST | `/admin/cron/{name}` | Manually trigger any cron (requires `ADMIN_TOKEN`) |
+| POST | `/admin/cb/trip` | Trip a feature circuit breaker (requires `ADMIN_TOKEN`) |
+| POST | `/admin/cb/reset` | Reset a feature circuit breaker (requires `ADMIN_TOKEN`) |
+| POST | `/admin/cb/account` | Set account-level CB status (requires `ADMIN_TOKEN`) |
 
 ## ⚙️ Configuration
 
@@ -260,6 +260,7 @@ alerts:
   - Account Analytics: Read
   - Workers Scripts: Edit
   - *Optional*: Account Settings: Read (for automatic plan detection)
+- **`ADMIN_TOKEN` secret** (recommended for production — protects admin endpoints). See [Security](./docs/security.md)
 
 ## 🔄 Upgrading
 
@@ -341,8 +342,9 @@ See the [full migration guide](./docs/how-to/migrate-from-platform-sdk.md) for d
 - [Custom feature IDs](./docs/how-to/custom-feature-ids.md) — featureId, featurePrefix, features map
 - [Migrate from platform-sdk](./docs/how-to/migrate-from-platform-sdk.md) — expanded migration guide
 
-### Reference
+### Security & Reference
 
+- [Security](./docs/security.md) — admin auth, secrets, threat model, data exposure
 - [Troubleshooting](./docs/troubleshooting.md) — common issues with solutions
 - [Changelog](./CHANGELOG.md) — version history
 

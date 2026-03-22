@@ -41,6 +41,7 @@ Common issues and their solutions when using cf-monitor.
 2. **Manual reset** — force a reset via the admin endpoint:
    ```bash
    curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cb/reset \
+     -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"featureId": "your-feature-id"}'
    ```
@@ -53,7 +54,10 @@ Common issues and their solutions when using cf-monitor.
    ```
    Clear it with:
    ```bash
-   curl -X POST .../admin/cb/account -H "Content-Type: application/json" -d '{"status":"clear"}'
+   curl -X POST .../admin/cb/account \
+     -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"status":"clear"}'
    ```
 
 ## CLI init fails
@@ -98,7 +102,8 @@ Common issues and their solutions when using cf-monitor.
 
 1. **No budget config keys** — check KV for `budget:config:*` keys. If empty, the hourly budget-check cron will auto-seed defaults from `PAID_PLAN_DAILY_BUDGETS` on the next run. Trigger it manually:
    ```bash
-   curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/budget-check
+   curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/budget-check \
+     -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
    ```
 
 2. **Config-sync not run** — if you set custom budgets in `cf-monitor.yaml`, push them to KV:
@@ -119,13 +124,14 @@ Common issues and their solutions when using cf-monitor.
 
 **Causes and fixes**:
 
-1. **SLACK_WEBHOOK_URL not set** — run `npx cf-monitor secret SLACK_WEBHOOK_URL` and paste your Slack incoming webhook URL.
+1. **SLACK_WEBHOOK_URL not set** — run `npx cf-monitor secret set SLACK_WEBHOOK_URL` and paste your Slack incoming webhook URL.
 
 2. **Deduplication** — budget warnings are deduplicated for 1 hour (daily) or 24 hours (monthly). If you just resolved the issue and it triggered again, the alert may be suppressed.
 
 3. **Test the payload** — verify Slack payload formatting:
    ```bash
    curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/test/slack-dry-run \
+     -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"type":"budget-warning","featureId":"test","metric":"kv_reads","current":900,"limit":1000}'
    ```
@@ -138,7 +144,7 @@ Common issues and their solutions when using cf-monitor.
 
 1. **GITHUB_REPO or GITHUB_TOKEN not set** — both are required. Run:
    ```bash
-   npx cf-monitor secret GITHUB_TOKEN
+   npx cf-monitor secret set GITHUB_TOKEN
    ```
    And ensure `github.repo` is set in cf-monitor.yaml.
 
@@ -149,6 +155,7 @@ Common issues and their solutions when using cf-monitor.
 4. **Test the format** — use the dry-run endpoint to see what would be created:
    ```bash
    curl -X POST .../admin/test/github-dry-run \
+     -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"scriptName":"my-worker","outcome":"exception","errorMessage":"test error"}'
    ```
@@ -217,3 +224,42 @@ These endpoints are always available on the monitor worker for troubleshooting:
 | `GET /workers` | Which workers have been discovered on the account |
 | `GET /plan` | Detected plan type, billing period, days remaining, plan allowances |
 | `GET /usage` | Account-wide per-service usage from CF GraphQL (approximate) |
+| `GET /self-health` | Self-monitoring: stale crons, error counts, handler breakdown |
+
+## Admin endpoints returning 401
+
+**Symptoms**: All `POST /admin/*` requests return `{"error":"Unauthorized"}`.
+
+**Causes and fixes**:
+
+1. **ADMIN_TOKEN not set** — set the secret on the cf-monitor worker:
+   ```bash
+   openssl rand -hex 32   # Generate a token
+   npx cf-monitor secret set ADMIN_TOKEN
+   ```
+
+2. **Missing Authorization header** — admin requests require:
+   ```bash
+   curl -X POST .../admin/cron/budget-check \
+     -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+   ```
+
+3. **Wrong token** — ensure the token in the header matches what was set via `secret set`. Tokens are case-sensitive.
+
+4. **Missing "Bearer " prefix** — the header must be `Authorization: Bearer <token>`, not `Authorization: <token>`.
+
+See [Security — Admin endpoint authentication](./security.md#admin-endpoint-authentication) for details.
+
+## Self-monitoring shows stale crons
+
+**Symptoms**: `GET /self-health` returns `503` with `staleCrons` listing one or more handlers.
+
+**Causes and fixes**:
+
+1. **Cron recently deployed** — after first deploy, it may take up to the cron interval (15 min or 1 hour) for all cron handlers to run once. Wait for the next scheduled execution.
+
+2. **Worker not running** — check `npx cf-monitor status` and `wrangler tail cf-monitor` for errors.
+
+3. **KV propagation** — self-monitoring timestamps are stored in KV with 48-hour TTL. Edge cache inconsistency may briefly show stale data.
+
+4. **Actual failure** — if a specific cron handler consistently appears stale, check `wrangler tail cf-monitor` for errors during that handler's schedule. Common causes: API token expired, GitHub rate limit, Slack webhook revoked.

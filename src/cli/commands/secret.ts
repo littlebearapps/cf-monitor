@@ -1,5 +1,5 @@
 import pc from 'picocolors';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
 const KNOWN_SECRETS = [
@@ -23,7 +23,11 @@ export async function secretSetCommand(name: string, _options: SecretOptions): P
 		process.exit(1);
 	}
 
-	if (!name) {
+	if (!name || !/^[A-Z_][A-Z0-9_]*$/.test(name)) {
+		if (name) {
+			console.error(pc.red(`  Invalid secret name: ${name}. Must match /^[A-Z_][A-Z0-9_]*$/.`));
+			process.exit(1);
+		}
 		console.log(pc.bold('\ncf-monitor secret set\n'));
 		console.log('  Known secrets:');
 		for (const s of KNOWN_SECRETS) {
@@ -37,7 +41,7 @@ export async function secretSetCommand(name: string, _options: SecretOptions): P
 
 	try {
 		// wrangler secret put reads from stdin interactively
-		execSync(`npx wrangler secret put ${name} -c ${configPath}`, {
+		execFileSync('npx', ['wrangler', 'secret', 'put', name, '-c', configPath], {
 			stdio: 'inherit',
 		});
 		console.log(pc.green(`\n  Secret ${name} set successfully.`));

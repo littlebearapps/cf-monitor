@@ -8,7 +8,7 @@ cf-monitor sends Slack alerts for budget warnings, errors, gap detections, cost 
 2. Set it as a secret on the cf-monitor worker:
 
 ```bash
-npx cf-monitor secret SLACK_WEBHOOK_URL
+npx cf-monitor secret set SLACK_WEBHOOK_URL
 # Paste your webhook URL when prompted
 ```
 
