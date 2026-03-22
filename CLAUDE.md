@@ -1,6 +1,6 @@
 # CLAUDE.md - cf-monitor
 
-**Last Updated**: 2026-03-21
+**Last Updated**: 2026-03-22
 
 ---
 
@@ -38,14 +38,14 @@
 | **Language** | TypeScript |
 | **Runtime** | Cloudflare Workers |
 | **npm** | `@littlebearapps/cf-monitor` |
-| **Status** | v0.2.1 — production-tested, published to npm |
+| **Status** | v0.2.2 — production-tested, published to npm |
 | **Repository** | https://github.com/littlebearapps/cf-monitor |
 | **Licence** | MIT |
 | **Issues** | https://github.com/littlebearapps/cf-monitor/issues |
 
 **Quick Commands**:
 ```bash
-npm test                    # Run unit tests (222 tests, vitest)
+npm test                    # Run unit tests (231 tests, vitest)
 npm run test:integration    # Run integration tests (53 tests across 10 files, needs CF credentials)
 npm run typecheck           # TypeScript check (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
@@ -223,6 +223,14 @@ Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
 **#30 — Feature ID format**: FIXED. Added `featureId` (single ID for all routes) and `featurePrefix` (replaces worker name in auto-generated IDs). Precedence: `featureId` → `features` map → auto-generate with `featurePrefix ?? workerName`.
 
 **#26 — Integration test suite**: IMPLEMENTED. 53 tests across 10 files covering all features. Deploys real workers with `test-` prefix to Platform CF account. CI: runs on push to main + workflow_dispatch.
+
+## Bug Fixes (v0.2.2)
+
+**#46 — Gatus heartbeat unreachable**: FIXED. Scheduled handler's cron branches all returned before heartbeat code. Restructured to `if`/`else if` chain without early returns. Heartbeat now always fires with `success` status reflecting cron handler results.
+
+**#51 — /budgets CB status 'unknown'**: FIXED. KV `list()` and `get()` can hit different edge caches. Now maps: `STOP`→`tripped`, `GO`→`resetting`, `null`→`tripped` (conservative default when key exists but value unreadable).
+
+**#49 — Budget enforcement disabled**: FIXED. Budget config keys were never populated (config-sync CLI not run, no auto-seeding). Added: (1) auto-seed from `PAID_PLAN_DAILY_BUDGETS` when no configs exist, (2) `__account__` fallback when per-feature config missing, (3) fixed config-sync to write `__account__` instead of `__default__`.
 
 ---
 
