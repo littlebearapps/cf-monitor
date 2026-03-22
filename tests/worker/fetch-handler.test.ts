@@ -124,6 +124,29 @@ describe('handleFetch', () => {
 		const body = await errorsResp.json() as Record<string, unknown>;
 		expect(body.count).toBe(0);
 	});
+
+	it('GET /self-health returns 200 with health status', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const resp = await handleFetch(createRequest('/self-health'), env, createMockCtx());
+
+		expect(resp.status).toBe(200);
+		const body = await resp.json() as Record<string, unknown>;
+		expect(body).toHaveProperty('healthy');
+		expect(body).toHaveProperty('handlers');
+		expect(body).toHaveProperty('errors');
+		expect(body).toHaveProperty('staleCrons');
+	});
+
+	it('GET /self-health returns 503 when stale cron detected', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const staleTime = new Date(Date.now() - 7_200_000).toISOString();
+		await env.CF_MONITOR_KV.put('self:v1:cron:last_run', JSON.stringify({
+			'gap-detection': { lastRun: staleTime, durationMs: 10, success: true },
+		}));
+
+		const resp = await handleFetch(createRequest('/self-health'), env, createMockCtx());
+		expect(resp.status).toBe(503);
+	});
 });
 
 describe('GitHub webhook (#22)', () => {
