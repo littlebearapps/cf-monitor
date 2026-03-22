@@ -336,6 +336,34 @@ async function flushTelemetry<Env extends object>(trackedEnv: TrackedEnv<Env>): 
 	}
 }
 
+// Module-level cache for billing period key suffix.
+// Avoids per-invocation KV reads — billing period changes at most once/month.
+let cachedMonthKeySuffix: string | null = null;
+let cachedMonthKeyExpiry = 0;
+
+/** Get the monthly key suffix, using module-level cache (1hr TTL per isolate). */
+async function getMonthKeySuffix(kv: KVNamespace): Promise<string> {
+	const now = Date.now();
+	if (cachedMonthKeySuffix && now < cachedMonthKeyExpiry) {
+		return cachedMonthKeySuffix;
+	}
+
+	try {
+		const raw = await kv.get(KV.CONFIG_BILLING_PERIOD);
+		if (raw) {
+			const period = JSON.parse(raw) as { start: string };
+			cachedMonthKeySuffix = period.start.slice(0, 10); // YYYY-MM-DD
+		} else {
+			cachedMonthKeySuffix = new Date().toISOString().slice(0, 7); // YYYY-MM fallback
+		}
+	} catch {
+		cachedMonthKeySuffix = new Date().toISOString().slice(0, 7);
+	}
+
+	cachedMonthKeyExpiry = now + 3_600_000; // 1hr
+	return cachedMonthKeySuffix;
+}
+
 /** Increment daily and monthly KV budget counters for budget enforcement. */
 async function accumulateBudgetUsage<Env extends object>(
 	trackedEnv: TrackedEnv<Env>,
@@ -350,10 +378,10 @@ async function accumulateBudgetUsage<Env extends object>(
 
 		const now = new Date();
 		const today = now.toISOString().slice(0, 10);
-		const month = now.toISOString().slice(0, 7); // YYYY-MM
+		const monthSuffix = await getMonthKeySuffix(kv);
 
 		const dailyKey = `${KV.BUDGET_DAILY}${featureId}:${today}`;
-		const monthlyKey = `${KV.BUDGET_MONTHLY}${featureId}:${month}`;
+		const monthlyKey = `${KV.BUDGET_MONTHLY}${featureId}:${monthSuffix}`;
 
 		const [dailyRaw, monthlyRaw] = await Promise.all([
 			kv.get(dailyKey),

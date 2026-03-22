@@ -23,13 +23,14 @@ import { secretSetCommand } from './commands/secret.js';
 import { configSyncCommand } from './commands/config-sync.js';
 import { upgradeCommand } from './commands/upgrade.js';
 import { migrateCommand } from './commands/migrate.js';
+import { usageCommand } from './commands/usage.js';
 
 const program = new Command();
 
 program
 	.name('cf-monitor')
 	.description('Self-contained Cloudflare account monitoring')
-	.version('0.2.1');
+	.version('0.3.0');
 
 program
 	.command('init')
@@ -84,6 +85,12 @@ configCmd
 	.command('validate')
 	.description('Validate cf-monitor.yaml against schema')
 	.action(() => configSyncCommand({ validate: true }));
+
+program
+	.command('usage')
+	.description('Show account-wide CF service usage vs plan allowances')
+	.option('--json', 'Output as JSON')
+	.action(usageCommand);
 
 program
 	.command('upgrade')

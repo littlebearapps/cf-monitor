@@ -1,5 +1,6 @@
 import type { MonitorWorkerEnv } from '../types.js';
 import { collectAccountMetrics } from './crons/collect-metrics.js';
+import { collectAccountUsage } from './crons/collect-account-usage.js';
 import { checkBudgets } from './crons/budget-check.js';
 import { detectGaps } from './crons/gap-detection.js';
 import { detectCostSpikes } from './crons/cost-spike.js';
@@ -36,6 +37,7 @@ export async function handleScheduled(
 		else if (cron === '0 * * * *') {
 			const results = await Promise.allSettled([
 				collectAccountMetrics(env),
+				collectAccountUsage(env),
 				checkBudgets(env),
 				runSyntheticHealthCheck(env),
 			]);

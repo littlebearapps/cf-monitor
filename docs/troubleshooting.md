@@ -177,6 +177,33 @@ Common issues and their solutions when using cf-monitor.
    monitor({ featureId: 'my-worker:all', fetch: handler });
    ```
 
+## Usage data shows "No usage data collected yet"
+
+**Symptoms**: `npx cf-monitor usage` or `GET /usage` returns no data.
+
+**Causes and fixes**:
+
+1. **First cron hasn't run** — account usage is collected hourly on the `0 * * * *` schedule. Wait for the next hour, or trigger manually:
+   ```bash
+   curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/collect-account-usage
+   ```
+
+2. **Missing CLOUDFLARE_API_TOKEN** — the same API token used for worker discovery is used for GraphQL queries. Ensure it's set as a secret on the cf-monitor worker.
+
+3. **No services in use** — if your account has zero D1, KV, R2, etc. activity in the last 24 hours, the usage snapshot will show empty services. This is correct behaviour.
+
+4. **GraphQL API unavailable** — the CF GraphQL Analytics API occasionally returns errors. Check the monitor worker's logs for `[cf-monitor:usage]` messages.
+
+## Plan shows as "paid" when account is actually free
+
+**Symptoms**: `GET /status` or `npx cf-monitor status` shows `plan: "paid"` on a Workers Free account.
+
+**Causes and fixes**:
+
+1. **Token lacks billing permission** — plan detection requires the `Account Settings: Read` permission (`#billing:read`) on your API token. Without it, cf-monitor conservatively defaults to "paid" (which means higher budget limits — safe but less protective for free accounts). Add the permission to your token for accurate detection.
+
+2. **Cached result** — the detected plan is cached in KV for 24 hours. If you recently upgraded/downgraded your plan, wait for cache expiry or delete the `config:plan` KV key manually.
+
 ## Debug endpoints
 
 These endpoints are always available on the monitor worker for troubleshooting:
@@ -184,7 +211,9 @@ These endpoints are always available on the monitor worker for troubleshooting:
 | Endpoint | What it tells you |
 |----------|-------------------|
 | `GET /_health` | Is the monitor worker running? |
-| `GET /status` | Account health, CB states, GitHub/Slack config status |
+| `GET /status` | Account health, plan, billing period, CB states, GitHub/Slack config |
 | `GET /errors` | Recent error fingerprints and their GitHub issue URLs |
-| `GET /budgets` | Which circuit breakers are currently active |
+| `GET /budgets` | Active circuit breakers, billing period |
 | `GET /workers` | Which workers have been discovered on the account |
+| `GET /plan` | Detected plan type, billing period, days remaining, plan allowances |
+| `GET /usage` | Account-wide per-service usage from CF GraphQL (approximate) |

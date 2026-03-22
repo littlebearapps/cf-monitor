@@ -76,6 +76,9 @@ That's it. Worker name, feature IDs, bindings, and budgets are all auto-detected
 | **Slack Alerts** | Budget warnings, error notifications, gap alerts, and cost spike alerts — all with KV-based deduplication so you don't get spammed. |
 | **Cost Spike Detection** | Flags when hourly costs exceed 200% of the 24-hour baseline. Catches anomalies before they become expensive. |
 | **Synthetic Health Checks** | Hourly CB pipeline validation: trip a test breaker, verify it blocks, reset it, verify it passes. Proves your safety net works. |
+| **Plan Detection** | Auto-detects Workers Free vs Paid plan via CF Subscriptions API. Selects correct budget defaults automatically — no config needed. |
+| **Billing Period Tracking** | Aligns monthly budgets to your actual CF billing cycle (e.g. 2nd to 2nd), not calendar months. Prevents misalignment at period boundaries. |
+| **Account Usage Dashboard** | Queries CF GraphQL API hourly for 9 services (D1, KV, R2, Workers, AI, AI Gateway, DO, Vectorize, Queues). Shows % of plan used via `GET /usage` and `npx cf-monitor usage`. |
 
 ### Optional (AI-powered, disabled by default)
 
@@ -135,7 +138,7 @@ export default monitor({
 | Worker name | `config.workerName` > `env.WORKER_NAME` > `env.name` > `'worker'` | `workerName` option or `wire --apply` |
 | Feature IDs | `{worker}:{handler}:{method}:{path-slug}` | `featureId`, `featurePrefix`, or `features` map |
 | Bindings | Duck-typing at runtime (D1, KV, R2, AI, Queue, DO, Vectorize, Workflow) | — |
-| Budget defaults | Based on CF plan (free/paid) | `budgets` in config or `config sync` CLI |
+| Budget defaults | Auto-detected from CF plan (free/paid) via Subscriptions API | `budgets` in config or `config sync` CLI |
 | Health endpoint | `/_monitor/health` | `healthEndpoint` option or `false` to disable |
 
 ## Architecture
@@ -159,7 +162,7 @@ Your Workers -tail->|  tail()  -> fingerprint -> GitHub Issues |-> Issues
 |---------|----------|---------|
 | `tail()` | Real-time | Error capture from all tailed workers |
 | `scheduled()` | `*/15 * * * *` | Gap detection, cost spike detection |
-| `scheduled()` | `0 * * * *` | CF GraphQL metrics, budget enforcement, synthetic CB health |
+| `scheduled()` | `0 * * * *` | CF GraphQL metrics, account usage collection, budget enforcement, synthetic CB health |
 | `scheduled()` | `0 0 * * *` | Daily rollup + warning digest, worker discovery |
 | `fetch()` | On-demand | Status API, admin endpoints, GitHub webhooks |
 
@@ -184,6 +187,7 @@ D1 (reads, writes, rows) · KV (reads, writes, deletes, lists) · R2 (Class A, C
 | `npx cf-monitor status` | Show monitor health and CB states | `--json` |
 | `npx cf-monitor coverage` | Show which workers are/aren't monitored | `--json` |
 | `npx cf-monitor secret` | Set a secret on the cf-monitor worker | `[name]` |
+| `npx cf-monitor usage` | Show account-wide CF service usage vs plan allowances | `--json` |
 | `npx cf-monitor config sync` | Push budgets from YAML to KV | — |
 | `npx cf-monitor config validate` | Validate cf-monitor.yaml against schema | — |
 | `npx cf-monitor upgrade` | Safe npm update + re-deploy | `--dry-run` |
@@ -200,6 +204,8 @@ The monitor worker exposes these endpoints:
 | GET | `/errors` | Recent error fingerprints with GitHub issue links |
 | GET | `/budgets` | Active circuit breakers and budget utilisation |
 | GET | `/workers` | Auto-discovered workers on the account |
+| GET | `/plan` | Detected plan type, billing period, days remaining, allowances |
+| GET | `/usage` | Account-wide per-service usage with plan context (approximate) |
 | POST | `/webhooks/github` | GitHub webhook receiver (issue close/reopen/mute sync) |
 | POST | `/admin/cron/{name}` | Manually trigger any cron (for testing) |
 | POST | `/admin/cb/trip` | Trip a feature circuit breaker |
@@ -300,7 +306,7 @@ Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for development 
 git clone https://github.com/littlebearapps/cf-monitor.git
 cd cf-monitor
 npm install
-npm test          # 222 unit tests
+npm test          # 254 unit tests
 npm run typecheck # TypeScript strict mode
 ```
 

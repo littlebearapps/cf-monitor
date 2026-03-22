@@ -205,6 +205,53 @@ export type TailOutcome =
 	| 'scriptNotFound';
 
 // =============================================================================
+// ACCOUNT PLAN & BILLING (#53, #54)
+// =============================================================================
+
+/** Cloudflare Workers plan type. */
+export type AccountPlan = 'free' | 'paid';
+
+/** Billing period from CF Subscriptions API. */
+export interface BillingPeriod {
+	/** ISO 8601 start date, e.g. "2026-03-02T00:00:00Z" */
+	start: string;
+	/** ISO 8601 end date, e.g. "2026-04-02T00:00:00Z" */
+	end: string;
+	/** Day of month the billing period starts (1-31). */
+	dayOfMonth: number;
+}
+
+/** Monthly included allowances per service for a plan tier. */
+export interface PlanAllowances {
+	workers: { requests: number; cpuMs: number };
+	d1: { rowsRead: number; rowsWritten: number; storageMb: number };
+	kv: { reads: number; writes: number; deletes: number; lists: number };
+	r2: { classA: number; classB: number; storageMb: number };
+	ai: { neurons: number; requests: number };
+	aiGateway: { requests: number };
+	durableObjects: { requests: number; storedBytes: number };
+	vectorize: { queries: number };
+	queues: { produced: number; consumed: number };
+}
+
+/** Per-service usage snapshot from CF GraphQL API (#55). */
+export interface ServiceUsageSnapshot {
+	collected_at: string;
+	disclaimer: string;
+	services: Partial<{
+		d1: { rowsRead: number; rowsWritten: number; storageMb?: number };
+		kv: { reads: number; writes: number; deletes: number; lists: number };
+		r2: { classA: number; classB: number; storageMb?: number };
+		workers: { requests: number; cpuMs: number };
+		ai: { neurons: number; requests: number };
+		aiGateway: { requests: number };
+		durableObjects: { requests: number; storedBytes: number };
+		vectorize: { queries: number };
+		queues: { produced: number; consumed: number };
+	}>;
+}
+
+// =============================================================================
 // ANALYTICS ENGINE
 // =============================================================================
 

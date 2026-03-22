@@ -68,6 +68,13 @@ export const KV = {
 	// Config cache
 	CONFIG_CACHE: 'config:cache',
 
+	// Account plan + billing (#53, #54)
+	CONFIG_PLAN: 'config:plan',
+	CONFIG_BILLING_PERIOD: 'config:billing_period',
+
+	// Account-wide usage snapshots (#55)
+	USAGE_ACCOUNT: 'usage:account:',
+
 	// AI patterns (optional)
 	PATTERNS_APPROVED: 'patterns:approved',
 } as const;
@@ -114,27 +121,9 @@ export const DEFAULT_REQUEST_LIMITS = {
 	queueMessages: 500,
 } as const;
 
-/** Default daily budgets for CF Workers Paid plan. */
-export const PAID_PLAN_DAILY_BUDGETS = {
-	d1_writes: 1_333_333, // 50M/month / 30 * 0.8
-	d1_reads: 16_666_667, // 5B/month / 30 * 0.1 (conservative)
-	kv_writes: 26_667, // 1M/month / 30 * 0.8
-	kv_reads: 333_333, // 10M/month / 30 * 0.1
-	ai_neurons: 333_333, // 10M/month / 30
-	r2_class_a: 33_333, // 1M/month / 30
-	r2_class_b: 333_333, // 10M/month / 30
-} as const;
-
-/** Default daily budgets for CF Workers Free plan. */
-export const FREE_PLAN_DAILY_BUDGETS = {
-	d1_writes: 10_000,
-	d1_reads: 166_667,
-	kv_writes: 1_000,
-	kv_reads: 33_333,
-	ai_neurons: 33_333,
-	r2_class_a: 3_333,
-	r2_class_b: 33_333,
-} as const;
+// Plan budget defaults — canonical source in src/worker/account/plan-allowances.ts
+// Re-exported here for backward compatibility.
+export { PAID_PLAN_DAILY_BUDGETS, FREE_PLAN_DAILY_BUDGETS } from './worker/account/plan-allowances.js';
 
 // =============================================================================
 // CF PRICING (USD per unit)

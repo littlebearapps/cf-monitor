@@ -2,6 +2,28 @@
 
 All notable changes to cf-monitor are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-03-22
+
+### Added
+- **Plan detection** (#53): Auto-detects Workers Free vs Paid plan via CF Subscriptions API. Budget auto-seeding now selects correct defaults for each plan. CLI `status` and `GET /status` show detected plan.
+- **Billing-period-aware budgets** (#54): Monthly budget tracking aligned to actual CF billing cycle (not calendar month). Gradual migration — old keys expire via TTL, both formats checked during transition.
+- **Account-wide usage collection** (#55): Hourly GraphQL queries for 9 CF services (D1, KV, R2, Workers, Workers AI, AI Gateway, Durable Objects, Vectorize, Queues). New `GET /usage` endpoint and `npx cf-monitor usage` CLI command.
+- New `GET /plan` endpoint — returns detected plan type, billing period, days remaining, and plan allowances
+- New `GET /usage` endpoint — returns per-service usage with plan context and data accuracy disclaimer
+- New `npx cf-monitor usage` CLI command — formatted table with colour-coded % of plan used
+- `GET /budgets` now includes `billingPeriod` object
+- `GET /status` now includes `plan` field and `billingPeriod`
+- New types exported: `AccountPlan`, `BillingPeriod`, `PlanAllowances`, `ServiceUsageSnapshot`
+- `collect-account-usage` added to admin cron triggers (`POST /admin/cron/collect-account-usage`)
+
+### Changed
+- Budget auto-seeding uses dynamic plan detection instead of hardcoded `PAID_PLAN_DAILY_BUDGETS`
+- Monthly budget KV keys transition from `YYYY-MM` to `YYYY-MM-DD` (billing period start date) — backward compatible, both formats checked during transition
+- `PAID_PLAN_DAILY_BUDGETS` and `FREE_PLAN_DAILY_BUDGETS` moved to `src/worker/account/plan-allowances.ts` (re-exported from `constants.ts` for backward compat)
+- CLI `status` now shows plan type, billing period, and days remaining
+- CLI `getAccountPlan()` uses Subscriptions API instead of naive account settings check
+- Unit tests increased from 231 to 254
+
 ## [0.2.2] - 2026-03-22
 
 ### Fixed
@@ -80,6 +102,7 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
+[0.3.0]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/littlebearapps/cf-monitor/compare/v0.1.0...v0.2.0
