@@ -141,7 +141,7 @@ export default monitor({
 |---------|-------------|-----------------|
 | Worker name | `config.workerName` > `env.WORKER_NAME` > `env.name` > `'worker'` | `workerName` option or `wire --apply` |
 | Feature IDs | `{worker}:{handler}:{method}:{path-slug}` | `featureId`, `featurePrefix`, or `features` map |
-| Bindings | Duck-typing at runtime (D1, KV, R2, AI, Queue, DO, Vectorize, Workflow) | — |
+| Bindings | Duck-typing at runtime (D1, KV, R2, AI, Queue, DO, Vectorize, Workflow) | `excludeBindings` to skip specific keys |
 | Budget defaults | Auto-detected from CF plan (free/paid) via Subscriptions API | `budgets` in config or `config sync` CLI |
 | Health endpoint | `/_monitor/health` | `healthEndpoint` option or `false` to disable |
 

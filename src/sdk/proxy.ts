@@ -14,10 +14,15 @@ export function createTrackedEnv<Env extends object>(
 	env: Env,
 	featureId: string,
 	workerName: string,
-	limits?: RequestLimits
+	limits?: RequestLimits,
+	excludeBindings?: string[]
 ): TrackedEnv<Env> {
 	const metrics = createMetrics();
 	const startTime = Date.now();
+	const skipKeys = new Set<string | symbol>([MONITOR_BINDINGS.KV, MONITOR_BINDINGS.AE]);
+	if (excludeBindings) {
+		for (const key of excludeBindings) skipKeys.add(key);
+	}
 
 	const handler: ProxyHandler<Env> = {
 		get(target, prop, receiver) {
@@ -29,8 +34,8 @@ export function createTrackedEnv<Env extends object>(
 			const value = Reflect.get(target, prop, receiver);
 			if (value == null || typeof value !== 'object') return value;
 
-			// Skip monitor's own bindings
-			if (prop === MONITOR_BINDINGS.KV || prop === MONITOR_BINDINGS.AE) return value;
+			// Skip monitor's own bindings and user-excluded bindings
+			if (skipKeys.has(prop)) return value;
 
 			// Wrap known binding types
 			if (isD1Database(value)) return wrapD1(value, metrics, limits);

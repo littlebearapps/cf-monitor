@@ -134,6 +134,23 @@ This prevents sensitive data (user IDs, tokens in paths) from appearing in featu
 
 The internal tracking metadata (metrics, feature ID, worker name) is stored on the env proxy using a module-private `Symbol()`. This is not discoverable by other code in the isolate, preventing malicious npm dependencies from reading internal metrics or worker names.
 
+## Binding detection
+
+cf-monitor uses duck-typing to identify Cloudflare binding types at runtime (checking for method signatures like `prepare()` + `batch()` for D1, `get()` + `put()` + `delete()` + `list()` for KV, etc.). This is fragile — a custom object on `env` matching these signatures would be incorrectly wrapped as a CF binding and tracked in metrics.
+
+**Mitigation**: Use the `excludeBindings` option to skip specific env keys from proxy wrapping:
+
+```typescript
+export default monitor({
+  excludeBindings: ['MY_CUSTOM_STORE', 'LEGACY_API_CLIENT'],
+  fetch: handler,
+});
+```
+
+Keys listed in `excludeBindings` are returned unwrapped (no metric tracking). cf-monitor's own bindings (`CF_MONITOR_KV`, `CF_MONITOR_AE`) are always excluded automatically.
+
+In practice, the risk is low — env bindings are set at deploy time by Cloudflare, and custom objects rarely match CF binding method signatures. But if you have a custom env object with `get()`, `put()`, `delete()`, and `list()` methods, `excludeBindings` is the escape hatch.
+
 ## Error message handling
 
 ### Truncation

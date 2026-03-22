@@ -96,6 +96,25 @@ describe('handleFetch', () => {
 		expect(body.count).toBe(2);
 	});
 
+	it('GET endpoints include CORS headers', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const resp = await handleFetch(createRequest('/_health'), env, createMockCtx());
+
+		expect(resp.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		expect(resp.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS');
+	});
+
+	it('OPTIONS returns 204 with CORS headers', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const req = new Request('http://localhost/_health', { method: 'OPTIONS' });
+		const resp = await handleFetch(req, env, createMockCtx());
+
+		expect(resp.status).toBe(204);
+		expect(resp.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		expect(resp.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS');
+		expect(resp.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type');
+	});
+
 	it('POST to non-webhook path returns 404', async () => {
 		const env = createMockMonitorWorkerEnv();
 		const resp = await handleFetch(createRequest('/status', 'POST'), env, createMockCtx());

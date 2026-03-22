@@ -52,6 +52,7 @@ export function monitor<Env extends object = object>(
 	const healthPath = config.healthEndpoint === false ? null : (config.healthEndpoint ?? '/_monitor/health');
 	const limits = config.limits;
 	const configWorkerName = config.workerName;
+	const excludeBindings = config.excludeBindings;
 
 	const worker: ExportedHandler<Env> = {};
 
@@ -100,7 +101,7 @@ export function monitor<Env extends object = object>(
 				return Response.json({ error: 'Feature temporarily unavailable', feature: featureId }, { status: 503 });
 			}
 
-			const trackedEnv = createTrackedEnv(env, featureId, workerName, limits);
+			const trackedEnv = createTrackedEnv(env, featureId, workerName, limits, excludeBindings);
 
 			try {
 				return await config.fetch(request, trackedEnv as unknown as Env, ctx);
@@ -153,7 +154,7 @@ export function monitor<Env extends object = object>(
 				return;
 			}
 
-			const trackedEnv = createTrackedEnv(env, featureId, workerName, limits);
+			const trackedEnv = createTrackedEnv(env, featureId, workerName, limits, excludeBindings);
 			let success = false;
 
 			try {
@@ -211,7 +212,7 @@ export function monitor<Env extends object = object>(
 				return;
 			}
 
-			const trackedEnv = createTrackedEnv(env, featureId, workerName, limits);
+			const trackedEnv = createTrackedEnv(env, featureId, workerName, limits, excludeBindings);
 
 			try {
 				await userQueue(batch, trackedEnv as unknown as Env, ctx);

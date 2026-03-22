@@ -105,7 +105,7 @@ export interface BindingInventory {
  * Auto-detect Cloudflare resource bindings in the worker environment.
  * Uses duck-typing to identify binding types.
  */
-export function detectBindings(env: object): BindingInventory {
+export function detectBindings(env: object, excludeKeys?: string[]): BindingInventory {
 	const inventory: BindingInventory = {
 		d1: [],
 		kv: [],
@@ -119,6 +119,9 @@ export function detectBindings(env: object): BindingInventory {
 	};
 
 	const skipKeys = new Set([MONITOR_BINDINGS.KV, MONITOR_BINDINGS.AE, 'WORKER_NAME']);
+	if (excludeKeys) {
+		for (const key of excludeKeys) skipKeys.add(key);
+	}
 
 	for (const [key, value] of Object.entries(env)) {
 		if (skipKeys.has(key)) continue;
