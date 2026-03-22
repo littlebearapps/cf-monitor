@@ -53,10 +53,104 @@ async function setMonthlyUsage(featureId: string, usage: Record<string, number>)
 }
 
 describe('checkBudgets — daily', () => {
-	it('does nothing when no budget configs exist', async () => {
+	it('auto-seeds __account__ fallback when no budget configs exist', async () => {
 		await checkBudgets(env);
+
+		// Should have auto-seeded __account__ config with paid plan defaults
+		const config = await env.CF_MONITOR_KV.get('budget:config:__account__');
+		expect(config).not.toBeNull();
+		const parsed = JSON.parse(config!);
+		expect(parsed.d1_writes).toBe(1_333_333);
+		expect(parsed.kv_writes).toBe(26_667);
+
+		// No CB trips (no usage data)
 		expect(tripFeatureCb).not.toHaveBeenCalled();
 		expect(sendSlackAlert).not.toHaveBeenCalled();
+	});
+
+	it('auto-seeds per-feature configs from discovered usage keys', async () => {
+		// Set usage data without any budget config
+		await env.CF_MONITOR_KV.put(
+			`${KV.BUDGET_DAILY}my-api:fetch:GET:data:${today}`,
+			JSON.stringify({ d1_writes: 5000 })
+		);
+
+		await checkBudgets(env);
+
+		// Should have seeded a config for the discovered feature
+		const config = await env.CF_MONITOR_KV.get(`${KV.BUDGET_CONFIG}my-api:fetch:GET:data`);
+		expect(config).not.toBeNull();
+		const parsed = JSON.parse(config!);
+		expect(parsed.d1_writes).toBe(1_333_333);
+	});
+
+	it('does not re-seed if seed flag exists', async () => {
+		// Set seed flag
+		await env.CF_MONITOR_KV.put('budget:config:__seeded__', 'true');
+
+		// Set usage but no budget config
+		await env.CF_MONITOR_KV.put(
+			`${KV.BUDGET_DAILY}my-api:${today}`,
+			JSON.stringify({ d1_writes: 5000 })
+		);
+
+		await checkBudgets(env);
+
+		// __account__ config should NOT be created (seed flag prevents it)
+		const config = await env.CF_MONITOR_KV.get('budget:config:__account__');
+		expect(config).toBeNull();
+	});
+
+	it('__account__ fallback applies when per-feature get() returns null', async () => {
+		// Simulate: per-feature config key exists in list but get returns null (edge cache).
+		// __account__ config exists as fallback.
+		await env.CF_MONITOR_KV.put(
+			`${KV.BUDGET_CONFIG}__account__`,
+			JSON.stringify({ d1_writes: 100 })
+		);
+		// Create a per-feature config key that will return null on get()
+		await env.CF_MONITOR_KV.put(`${KV.BUDGET_CONFIG}flaky-feature`, 'placeholder');
+		await env.CF_MONITOR_KV.put(
+			`${KV.BUDGET_DAILY}flaky-feature:${today}`,
+			JSON.stringify({ d1_writes: 150 })
+		);
+
+		// Override get to return null for the per-feature config (simulating edge cache miss)
+		const originalGet = env.CF_MONITOR_KV.get.bind(env.CF_MONITOR_KV);
+		vi.spyOn(env.CF_MONITOR_KV, 'get').mockImplementation(async (key: string, ...args: unknown[]) => {
+			if (key === `${KV.BUDGET_CONFIG}flaky-feature`) return null;
+			return (originalGet as Function)(key, ...args);
+		});
+
+		await checkBudgets(env);
+
+		// Should trip using __account__ fallback config (limit: 100, usage: 150)
+		expect(tripFeatureCb).toHaveBeenCalledWith(
+			env.CF_MONITOR_KV,
+			'flaky-feature',
+			expect.stringContaining('budget exceeded')
+		);
+	});
+
+	it('per-feature config takes priority over __account__ fallback', async () => {
+		// Set per-feature config with low limit
+		await setFeatureBudget('my-feature', { d1_writes: 100 });
+		// Set account-wide config with high limit
+		await env.CF_MONITOR_KV.put(
+			`${KV.BUDGET_CONFIG}__account__`,
+			JSON.stringify({ d1_writes: 10_000 })
+		);
+		// Set usage that exceeds per-feature but not account-wide
+		await setFeatureUsage('my-feature', { d1_writes: 150 });
+
+		await checkBudgets(env);
+
+		// Should trip based on per-feature config (100), not account-wide (10000)
+		expect(tripFeatureCb).toHaveBeenCalledWith(
+			env.CF_MONITOR_KV,
+			'my-feature',
+			expect.stringContaining('budget exceeded')
+		);
 	});
 
 	it('does nothing when usage is zero (no usage data)', async () => {

@@ -81,7 +81,7 @@ Or push from config to KV:
 npx cf-monitor config sync
 ```
 
-If not configured, cf-monitor auto-calculates defaults based on your Cloudflare plan (free vs paid) with conservative margins (80% of plan allowance / 30 days).
+If not configured, cf-monitor auto-seeds defaults from `PAID_PLAN_DAILY_BUDGETS` (80% of paid plan allowance / 30 days). The auto-seeding runs during the first hourly budget check when no `budget:config:*` keys exist in KV. It discovers active features from usage data, writes per-feature configs with 25-hour TTL, and creates an `__account__` fallback that applies to any feature without its own config. A seed flag (24-hour TTL) prevents re-seeding every hour.
 
 ## Monthly budgets (Layer 2b)
 

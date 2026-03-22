@@ -1,10 +1,13 @@
-import { KV } from '../../constants.js';
+import { KV, PAID_PLAN_DAILY_BUDGETS } from '../../constants.js';
 import type { MonitorWorkerEnv } from '../../types.js';
 import { tripFeatureCb } from '../../sdk/circuit-breaker.js';
 import { sendSlackAlert, formatBudgetWarning } from '../alerts/slack.js';
 
 /** Budget config prefix for monthly limits. */
 const BUDGET_CONFIG_MONTHLY = 'budget:config:monthly:';
+
+/** Auto-seed flag key — prevents re-seeding every hour. */
+const SEED_FLAG = 'budget:config:__seeded__';
 
 /**
  * Hourly: Check feature budgets against configured limits.
@@ -24,10 +27,22 @@ async function checkDailyBudgets(env: MonitorWorkerEnv): Promise<void> {
 	const configList = await env.CF_MONITOR_KV.list({ prefix: KV.BUDGET_CONFIG, limit: 200 });
 	const today = new Date().toISOString().slice(0, 10);
 
-	for (const key of configList.keys) {
-		// Skip monthly config keys
-		if (key.name.startsWith(BUDGET_CONFIG_MONTHLY)) continue;
+	// Filter to only actual daily config keys (not monthly, not seed flag)
+	let dailyConfigs = configList.keys.filter(
+		(k) => !k.name.startsWith(BUDGET_CONFIG_MONTHLY) && k.name !== SEED_FLAG
+	);
 
+	// Auto-seed if no daily budget configs exist
+	if (dailyConfigs.length === 0) {
+		await autoSeedBudgets(env);
+		// Re-read after seeding
+		const reloaded = await env.CF_MONITOR_KV.list({ prefix: KV.BUDGET_CONFIG, limit: 200 });
+		dailyConfigs = reloaded.keys.filter(
+			(k) => !k.name.startsWith(BUDGET_CONFIG_MONTHLY) && k.name !== SEED_FLAG
+		);
+	}
+
+	for (const key of dailyConfigs) {
 		const featureId = key.name.replace(KV.BUDGET_CONFIG, '');
 		try {
 			await checkFeatureBudget(env, featureId, today);
@@ -37,15 +52,73 @@ async function checkDailyBudgets(env: MonitorWorkerEnv): Promise<void> {
 	}
 }
 
+/** Auto-seed default budget configs when none exist (safety net). */
+async function autoSeedBudgets(env: MonitorWorkerEnv): Promise<void> {
+	// Check if we already seeded recently (avoid redundant KV writes)
+	const seeded = await env.CF_MONITOR_KV.get(SEED_FLAG);
+	if (seeded) return;
+
+	console.log('[cf-monitor:budget] No budget configs found. Auto-seeding defaults.');
+
+	const defaults = JSON.stringify(PAID_PLAN_DAILY_BUDGETS);
+
+	// Discover active features from usage keys
+	const usageList = await env.CF_MONITOR_KV.list({ prefix: KV.BUDGET_DAILY, limit: 200 });
+	const features = new Set<string>();
+	for (const key of usageList.keys) {
+		// Key format: budget:usage:daily:{featureId}:{date}
+		const suffix = key.name.replace(KV.BUDGET_DAILY, '');
+		// Strip the date suffix (last 11 chars: colon + YYYY-MM-DD)
+		const dateIdx = suffix.lastIndexOf(':');
+		if (dateIdx > 0) {
+			features.add(suffix.slice(0, dateIdx));
+		}
+	}
+
+	// Write per-feature budget config using paid plan defaults
+	const writes: Promise<void>[] = [];
+	for (const featureId of features) {
+		writes.push(
+			env.CF_MONITOR_KV.put(
+				`${KV.BUDGET_CONFIG}${featureId}`,
+				defaults,
+				{ expirationTtl: 90000 } // 25hr TTL — auto-seed re-runs if config-sync never runs
+			)
+		);
+	}
+
+	// Account-wide fallback (always created)
+	writes.push(
+		env.CF_MONITOR_KV.put(
+			`${KV.BUDGET_CONFIG}__account__`,
+			defaults,
+			{ expirationTtl: 90000 }
+		)
+	);
+
+	// Set seed flag (24hr TTL) to avoid re-seeding every hour
+	writes.push(
+		env.CF_MONITOR_KV.put(SEED_FLAG, new Date().toISOString(), { expirationTtl: 86400 })
+	);
+
+	await Promise.all(writes);
+	console.log(`[cf-monitor:budget] Auto-seeded ${features.size + 1} budget config(s).`);
+}
+
 async function checkFeatureBudget(
 	env: MonitorWorkerEnv,
 	featureId: string,
 	today: string
 ): Promise<void> {
-	const [configRaw, usageRaw] = await Promise.all([
+	let [configRaw, usageRaw] = await Promise.all([
 		env.CF_MONITOR_KV.get(`${KV.BUDGET_CONFIG}${featureId}`),
 		env.CF_MONITOR_KV.get(`${KV.BUDGET_DAILY}${featureId}:${today}`),
 	]);
+
+	// Fallback to account-wide budget config
+	if (!configRaw && featureId !== '__account__') {
+		configRaw = await env.CF_MONITOR_KV.get(`${KV.BUDGET_CONFIG}__account__`);
+	}
 
 	if (!configRaw) return;
 

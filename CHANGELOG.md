@@ -2,6 +2,19 @@
 
 All notable changes to cf-monitor are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-03-22
+
+### Fixed
+- Gatus heartbeat unreachable in scheduled handler — all cron branches returned before heartbeat code (#46)
+- `/budgets` endpoint shows CB status `'unknown'` due to KV edge cache inconsistency — now maps `STOP`→`tripped`, `GO`→`resetting`, `null`→`tripped` (#51)
+- Budget enforcement effectively disabled — zero `budget:config:*` keys populated after deploy. Added auto-seeding from `PAID_PLAN_DAILY_BUDGETS` when no configs exist, plus `__account__` fallback (#49)
+- `config-sync` CLI wrote `budget:config:__default__` key that never matched per-feature usage keys — changed to `budget:config:__account__`
+
+### Changed
+- Scheduled handler now uses `if`/`else if` chain instead of `if`+`return`, tracks `success` from `Promise.allSettled` results, passes `success` status to Gatus heartbeat URL
+- Budget check cron auto-seeds defaults (25hr TTL) from discovered usage keys when no config exists, with 24hr seed flag to prevent hourly re-seeding
+- Unit tests increased from 222 to 231
+
 ## [0.2.1] - 2026-03-21
 
 ### Added
@@ -67,6 +80,7 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
+[0.2.2]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/littlebearapps/cf-monitor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/littlebearapps/cf-monitor/releases/tag/v0.1.0

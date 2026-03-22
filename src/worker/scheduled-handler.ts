@@ -21,45 +21,47 @@ export async function handleScheduled(
 	ctx: ExecutionContext
 ): Promise<void> {
 	const cron = controller.cron;
+	let success = true;
 
 	try {
 		// 15-minute checks
 		if (cron === '*/15 * * * *') {
-			await Promise.allSettled([
+			const results = await Promise.allSettled([
 				detectGaps(env),
 				detectCostSpikes(env),
 			]);
-			return;
+			success = results.every((r) => r.status === 'fulfilled');
 		}
-
 		// Hourly checks
-		if (cron === '0 * * * *') {
-			await Promise.allSettled([
+		else if (cron === '0 * * * *') {
+			const results = await Promise.allSettled([
 				collectAccountMetrics(env),
 				checkBudgets(env),
 				runSyntheticHealthCheck(env),
 			]);
-			return;
+			success = results.every((r) => r.status === 'fulfilled');
 		}
-
 		// Daily midnight
-		if (cron === '0 0 * * *') {
-			await Promise.allSettled([
+		else if (cron === '0 0 * * *') {
+			const results = await Promise.allSettled([
 				runDailyRollup(env),
 				discoverWorkers(env),
 			]);
-			return;
+			success = results.every((r) => r.status === 'fulfilled');
 		}
-
-		console.warn(`[cf-monitor:scheduled] Unhandled cron: ${cron}`);
+		else {
+			console.warn(`[cf-monitor:scheduled] Unhandled cron: ${cron}`);
+			success = false;
+		}
 	} catch (err) {
 		console.error(`[cf-monitor:scheduled] Cron ${cron} failed: ${err}`);
+		success = false;
 	}
 
-	// Heartbeat ping (if configured)
+	// Heartbeat ping (if configured) — always runs after cron dispatch
 	if (env.GATUS_HEARTBEAT_URL && env.GATUS_TOKEN) {
 		ctx.waitUntil(
-			fetch(`${env.GATUS_HEARTBEAT_URL}?success=true`, {
+			fetch(`${env.GATUS_HEARTBEAT_URL}?success=${success}`, {
 				method: 'POST',
 				headers: { Authorization: `Bearer ${env.GATUS_TOKEN}` },
 			}).catch(() => {})

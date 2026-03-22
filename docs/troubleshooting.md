@@ -90,6 +90,29 @@ Common issues and their solutions when using cf-monitor.
 
 **Detection chain**: `config.workerName` > `env.WORKER_NAME` > `env.name` > `'worker'`
 
+## Budget enforcement not working
+
+**Symptoms**: usage accumulates in KV (`budget:usage:daily:*` keys) but no circuit breakers trip and no Slack warnings appear.
+
+**Causes and fixes**:
+
+1. **No budget config keys** — check KV for `budget:config:*` keys. If empty, the hourly budget-check cron will auto-seed defaults from `PAID_PLAN_DAILY_BUDGETS` on the next run. Trigger it manually:
+   ```bash
+   curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/budget-check
+   ```
+
+2. **Config-sync not run** — if you set custom budgets in `cf-monitor.yaml`, push them to KV:
+   ```bash
+   npx cf-monitor config sync
+   ```
+
+3. **Seed flag active** — auto-seeding is prevented for 24 hours after the last seed (to avoid hourly KV writes). If you need to re-seed immediately, delete the flag:
+   ```bash
+   wrangler kv key delete "budget:config:__seeded__" --namespace-id YOUR_KV_NAMESPACE_ID
+   ```
+
+4. **`__account__` fallback** — even without per-feature configs, the `__account__` config applies to all features. If this is missing too, auto-seeding failed. Check `wrangler tail cf-monitor` for errors.
+
 ## Budget warnings not appearing in Slack
 
 **Symptoms**: budgets are being exceeded (CB trips visible) but no Slack messages.
