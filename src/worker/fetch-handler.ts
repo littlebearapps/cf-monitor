@@ -1,5 +1,6 @@
 import { KV, PRIORITY_MAP } from '../constants.js';
 import type { MonitorWorkerEnv, TailOutcome } from '../types.js';
+import { getSelfHealth, checkCronStaleness } from './self-monitor.js';
 import { collectAccountMetrics } from './crons/collect-metrics.js';
 import { checkBudgets } from './crons/budget-check.js';
 import { detectGaps } from './crons/gap-detection.js';
@@ -51,6 +52,7 @@ export async function handleFetch(
 
 	try {
 		if (path === '/_health') return handleHealth(env);
+		if (path === '/self-health') return handleSelfHealth(env);
 		if (path === '/status') return handleStatus(env);
 		if (path === '/errors') return handleErrors(env);
 		if (path === '/budgets') return handleBudgets(env);
@@ -75,6 +77,26 @@ async function handleHealth(env: MonitorWorkerEnv): Promise<Response> {
 		account: env.ACCOUNT_NAME,
 		timestamp: Date.now(),
 	});
+}
+
+async function handleSelfHealth(env: MonitorWorkerEnv): Promise<Response> {
+	try {
+		const status = await getSelfHealth(env);
+		return Response.json({
+			healthy: status.healthy,
+			staleCrons: status.staleCrons,
+			errors: status.todayErrors,
+			handlers: status.handlerErrors,
+			crons: status.crons,
+			timestamp: Date.now(),
+		}, { status: status.healthy ? 200 : 503 });
+	} catch (err) {
+		return Response.json({
+			healthy: false,
+			error: 'Failed to gather self-health',
+			timestamp: Date.now(),
+		}, { status: 500 });
+	}
 }
 
 async function handleStatus(env: MonitorWorkerEnv): Promise<Response> {
@@ -228,11 +250,12 @@ const CRON_HANDLERS: Record<string, (env: MonitorWorkerEnv) => Promise<void>> = 
 	'gap-detection': detectGaps,
 	'budget-check': checkBudgets,
 	'cost-spike': detectCostSpikes,
-	'metrics': collectAccountMetrics,
+	'collect-metrics': collectAccountMetrics,
 	'collect-account-usage': collectAccountUsage,
 	'synthetic-health': runSyntheticHealthCheck,
 	'worker-discovery': discoverWorkers,
 	'daily-rollup': runDailyRollup,
+	'staleness-check': (env: MonitorWorkerEnv) => checkCronStaleness(env),
 };
 
 async function handleAdminCronTrigger(path: string, env: MonitorWorkerEnv): Promise<Response> {

@@ -25,6 +25,15 @@ vi.mock('../../src/worker/crons/daily-rollup.js', () => ({
 vi.mock('../../src/worker/crons/worker-discovery.js', () => ({
 	discoverWorkers: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock('../../src/worker/crons/collect-account-usage.js', () => ({
+	collectAccountUsage: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../../src/worker/self-monitor.js', () => ({
+	recordCronExecution: vi.fn().mockResolvedValue(undefined),
+	recordHandlerError: vi.fn().mockResolvedValue(undefined),
+	recordSelfTelemetry: vi.fn(),
+	checkCronStaleness: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { detectGaps } from '../../src/worker/crons/gap-detection.js';
 import { detectCostSpikes } from '../../src/worker/crons/cost-spike.js';
@@ -33,6 +42,8 @@ import { checkBudgets } from '../../src/worker/crons/budget-check.js';
 import { runSyntheticHealthCheck } from '../../src/worker/crons/synthetic-health.js';
 import { runDailyRollup } from '../../src/worker/crons/daily-rollup.js';
 import { discoverWorkers } from '../../src/worker/crons/worker-discovery.js';
+import { collectAccountUsage } from '../../src/worker/crons/collect-account-usage.js';
+import { recordCronExecution, recordSelfTelemetry, checkCronStaleness } from '../../src/worker/self-monitor.js';
 
 let mockFetch: ReturnType<typeof vi.fn>;
 
@@ -168,5 +179,33 @@ describe('handleScheduled', () => {
 
 		// Should not throw
 		await handleScheduled(createMockScheduledController('*/15 * * * *'), env, ctx);
+	});
+
+	it('records self-telemetry for each handler in 15-min cron', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const ctx = createMockCtx();
+		await handleScheduled(createMockScheduledController('*/15 * * * *'), env, ctx);
+
+		expect(recordCronExecution).toHaveBeenCalledWith(env, 'gap-detection', expect.any(Number), true);
+		expect(recordCronExecution).toHaveBeenCalledWith(env, 'cost-spike', expect.any(Number), true);
+		expect(recordSelfTelemetry).toHaveBeenCalledWith(env, 'gap-detection', expect.any(Number), true);
+	});
+
+	it('records error when cron handler fails', async () => {
+		vi.mocked(detectGaps).mockRejectedValueOnce(new Error('fail'));
+		const env = createMockMonitorWorkerEnv();
+		const ctx = createMockCtx();
+		await handleScheduled(createMockScheduledController('*/15 * * * *'), env, ctx);
+
+		expect(recordCronExecution).toHaveBeenCalledWith(env, 'gap-detection', expect.any(Number), false);
+	});
+
+	it('runs staleness check on 15-minute cron', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const ctx = createMockCtx();
+		await handleScheduled(createMockScheduledController('*/15 * * * *'), env, ctx);
+		await ctx._flush();
+
+		expect(checkCronStaleness).toHaveBeenCalledWith(env);
 	});
 });

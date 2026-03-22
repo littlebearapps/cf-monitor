@@ -16,7 +16,7 @@ Thanks for your interest in contributing! cf-monitor is open source and we welco
 git clone https://github.com/littlebearapps/cf-monitor.git
 cd cf-monitor
 npm install
-npm test              # 222 unit tests (vitest)
+npm test              # 286 unit tests (vitest)
 npm run typecheck     # TypeScript strict mode
 ```
 
@@ -70,6 +70,7 @@ src/
     tail-handler.ts    # Error capture from tailed workers
     fetch-handler.ts   # API endpoints + admin routes
     scheduled-handler.ts # Cron multiplexer
+    self-monitor.ts  # Self-monitoring (cron timestamps, error counts, staleness)
     crons/       # Individual cron handlers
     errors/      # Fingerprinting, patterns, GitHub issues
     alerts/      # Slack alerting
@@ -101,6 +102,17 @@ src/
 2. Import and add to the cron multiplexer in `src/worker/scheduled-handler.ts`
 3. Add to `CRON_HANDLERS` in `src/worker/fetch-handler.ts` (enables manual trigger via `/admin/cron/{name}`)
 4. Add unit tests in `tests/worker/crons/`
+
+## Self-Monitoring Integration
+
+When adding new handler logic, integrate self-monitoring:
+
+- **Cron handlers**: call `recordCronExecution(env, handlerName, durationMs, success)` after each cron completes
+- **Error handling**: call `recordHandlerError(env, handlerName, error)` in catch blocks
+- **AE telemetry**: call `recordSelfTelemetry(env, handlerName, durationMs, success)` for AE data points
+- Add new cron handlers to `CRON_HANDLER_REGISTRY` in `src/constants.ts` with their expected schedule and max staleness
+
+These functions are all fail-open — they will never break the handler they're monitoring.
 
 ## Commit Conventions
 

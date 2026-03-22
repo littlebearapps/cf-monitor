@@ -29,7 +29,8 @@ CB auto-resets after TTL (default 1hr).
 The cf-monitor worker itself must be cost-efficient:
 - Tail handler: ~1 KV read (dedup) + ~1 KV write (fingerprint) per unique error
 - Cron handler: ~10 KV reads + ~5 AE writes per hourly run
-- Total: well under 1000 KV ops/day
+- Self-monitoring (#44): ~115 KV writes + ~150 KV reads + ~310 AE writes/day
+- Total: ~265 new KV ops/day from self-monitoring, well under 1000 KV ops/day
 
 ## AE vs KV Cost Trade-off
 

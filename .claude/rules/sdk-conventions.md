@@ -16,6 +16,10 @@ AE doubles positions (0-19) are **append-only**. Never reorder. New metrics go a
 
 This layout is backward-compatible with `@littlebearapps/platform-consumer-sdk` so existing AE data is readable by cf-monitor.
 
+## Self-Telemetry AE Convention (#44)
+
+Self-monitoring data points use `blob2` format `self:{durationMs}:{1|0}` (e.g. `self:250:1`). Only `doubles[0]=1` is set (invocation count). Duration and success are encoded in `blob2` to avoid conflicting with positions 0-19 in AE_FIELDS. Filter with: `WHERE blob2 LIKE 'self:%'`.
+
 ## KV Key Versioning
 
 All KV key prefixes include a version segment (e.g. `cb:v1:feature:`). When schema changes are needed, increment the version. Old keys expire naturally via TTL.
@@ -55,3 +59,12 @@ The `wire --apply` CLI command auto-injects `WORKER_NAME` from wrangler config `
 ## No Project Concept
 
 Unlike platform-consumer-sdk which required a `project` parameter, cf-monitor operates at account scope. The "project" is the entire CF account. Feature IDs start with the worker name, not a project name.
+
+## Debugging cf-monitor Issues
+
+When cf-monitor itself has problems, use the self-monitoring endpoints:
+
+- `GET /self-health` — Returns 200 (healthy) or 503 (stale crons). Shows per-handler last run times, error counts, and stale cron list.
+- `POST /admin/cron/staleness-check` — Manually trigger staleness detection.
+- KV inspection: Read `self:v1:cron:last_run` for handler execution history as JSON blob.
+- AE query: `SELECT blob3 AS handler, count() FROM "cf-monitor" WHERE blob2 LIKE 'self:%' GROUP BY handler` — handler invocation counts.

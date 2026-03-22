@@ -2,6 +2,17 @@
 
 All notable changes to cf-monitor are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
+## [0.3.2] - 2026-03-22
+
+### Added
+- Self-monitoring module: tracks cron execution timestamps, per-handler error counts, and daily error totals (#44)
+- `GET /self-health` endpoint — structured self-health status with handler breakdown, stale cron detection (200 healthy, 503 stale)
+- Self-telemetry AE data points for cf-monitor's own handler invocations (`blob2` format: `self:{durationMs}:{1|0}`)
+- Cron staleness Slack alerts when handlers haven't run within expected intervals (1/day dedup)
+- `CRON_HANDLER_REGISTRY` constant defining expected schedule and max staleness per cron handler
+- Admin cron trigger: `POST /admin/cron/staleness-check`
+- New KV prefixes: `self:v1:cron:last_run`, `self:v1:error:{handler}:{date}`, `self:v1:errors:count:{date}`
+
 ## [0.3.1] - 2026-03-22
 
 ### Fixed
@@ -112,6 +123,7 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
+[0.3.2]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.1...v0.2.2

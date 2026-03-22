@@ -38,7 +38,7 @@
 | **Language** | TypeScript |
 | **Runtime** | Cloudflare Workers |
 | **npm** | `@littlebearapps/cf-monitor` |
-| **Status** | v0.3.1 — production-tested, published to npm |
+| **Status** | v0.3.2 — production-tested, published to npm |
 | **Repository** | https://github.com/littlebearapps/cf-monitor |
 | **Licence** | MIT |
 | **Issues** | https://github.com/littlebearapps/cf-monitor/issues |
@@ -82,7 +82,8 @@ cf-monitor/
 │   │   ├── index.ts          # Export: { fetch, scheduled, tail }
 │   │   ├── tail-handler.ts   # Error capture → fingerprint → GitHub issue
 │   │   ├── scheduled-handler.ts # Cron multiplexer
-│   │   ├── fetch-handler.ts  # API: /status, /errors, /budgets, /workers, /plan, /usage + admin cron triggers + GitHub webhooks
+│   │   ├── fetch-handler.ts  # API: /status, /errors, /budgets, /workers, /plan, /usage, /self-health + admin cron triggers + GitHub webhooks
+│   │   ├── self-monitor.ts   # Self-monitoring: cron tracking, error counts, AE telemetry, staleness detection
 │   │   ├── account/          # Account-level concerns (plan detection, billing period, allowances)
 │   │   ├── crons/            # Cron handlers (metrics, usage collection, budgets, gaps, discovery)
 │   │   ├── errors/           # Fingerprinting, patterns, GitHub issue CRUD
@@ -100,7 +101,7 @@ cf-monitor/
 │
 ├── vitest.integration.config.ts  # Integration test config (globalSetup, 120s timeout)
 │
-└── tests/                    # 222 unit tests + 53 integration tests
+└── tests/                    # 286 unit tests + 53 integration tests
     ├── helpers/               # Mock KV, AE, env, request factories
     ├── sdk/                   # monitor, proxy, metrics, detection, circuit-breaker
     ├── worker/                # tail, fetch, scheduled, config, ae-client, crons, errors
@@ -133,7 +134,7 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | `scheduled()` | `*/15 * * * *` | Gap detection, cost spike detection |
 | `scheduled()` | `0 * * * *` | CF GraphQL metrics, account usage collection, budget enforcement (daily+monthly), synthetic CB health |
 | `scheduled()` | `0 0 * * *` | Daily rollup + warning digest, worker discovery |
-| `fetch()` | On-demand | API: /status, /errors, /budgets, /workers, /plan, /usage, /_health, /admin/cron/*, /webhooks/github |
+| `fetch()` | On-demand | API: /status, /errors, /budgets, /workers, /plan, /usage, /self-health, /_health, /admin/cron/*, /webhooks/github |
 
 ### Storage Model
 
@@ -161,6 +162,9 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | `config:plan` | Detected CF plan (free/paid), 24hr TTL |
 | `config:billing_period` | Billing period JSON, 32d TTL |
 | `usage:account:{date}` | Daily per-service usage snapshot, 32d TTL |
+| `self:v1:cron:last_run` | Handler execution timestamps (single JSON blob), 48hr TTL |
+| `self:v1:error:` | Per-handler daily error counts, 48hr TTL |
+| `self:v1:errors:count:` | Total daily error count, 48hr TTL |
 
 ---
 
@@ -180,6 +184,7 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | Account detection | `src/worker/account/subscriptions.ts` — plan detection, billing period, KV-cached |
 | Plan allowances | `src/worker/account/plan-allowances.ts` — free/paid allowance tables |
 | Usage collection | `src/worker/crons/collect-account-usage.ts` — hourly GraphQL for 9 services |
+| Self-monitoring | `src/worker/self-monitor.ts` — cron tracking, error counts, AE telemetry, /self-health, staleness |
 | CLI entry | `src/cli/index.ts` — commander setup |
 
 ---
@@ -246,6 +251,10 @@ Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
 **#58 — D1 date filter format**: FIXED. D1's `d1AnalyticsAdaptiveGroups` requires `date_geq`/`date_leq` (YYYY-MM-DD), not `datetime_geq` (ISO 8601). Caused entire batched GraphQL query to fail with "unknown arg datetime_geq".
 
 **#59 — Single query kills all results**: FIXED. Split core services into 5 parallel GraphQL queries (Workers, D1, KV, R2, DO). Each individually try-caught. If one service query fails, the others still return data. Costs 5 requests instead of 2 but well within CF's 25/5min rate limit.
+
+## v0.3.2 Features
+
+**#44 — Self-monitoring**: cf-monitor now tracks its own handler execution, errors, and cron staleness. New `self-monitor.ts` module provides fail-open recording functions. All 3 handlers (tail, scheduled, fetch) are instrumented. New `GET /self-health` endpoint returns handler status, error counts, and stale cron detection (200 when healthy, 503 when stale). Staleness alerts via Slack (1/day dedup). Self-telemetry written to AE (`blob2` format: `self:{durationMs}:{1|0}`, `doubles[0]=1`). New KV prefixes: `self:v1:cron:last_run` (handler timestamps as single JSON blob), `self:v1:error:{handler}:{date}` (error counts), `self:v1:errors:count:{date}` (daily total). `CRON_HANDLER_REGISTRY` constant for staleness thresholds. Admin cron trigger: `POST /admin/cron/staleness-check`. Phase 3 (self-capture via error pipeline) deferred to future version.
 
 ## Bug Fixes (v0.2.2)
 

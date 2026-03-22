@@ -1,4 +1,5 @@
 import type { MonitorWorkerEnv } from '../types.js';
+import { recordCronExecution, recordHandlerError, recordSelfTelemetry, checkCronStaleness } from './self-monitor.js';
 import { collectAccountMetrics } from './crons/collect-metrics.js';
 import { collectAccountUsage } from './crons/collect-account-usage.js';
 import { checkBudgets } from './crons/budget-check.js';
@@ -7,6 +8,27 @@ import { detectCostSpikes } from './crons/cost-spike.js';
 import { discoverWorkers } from './crons/worker-discovery.js';
 import { runDailyRollup } from './crons/daily-rollup.js';
 import { runSyntheticHealthCheck } from './crons/synthetic-health.js';
+
+/** Execute a cron handler with self-monitoring recording. */
+async function runAndRecord(
+	env: MonitorWorkerEnv,
+	name: string,
+	handler: () => Promise<void>
+): Promise<void> {
+	const start = Date.now();
+	let ok = true;
+	try {
+		await handler();
+	} catch (err) {
+		ok = false;
+		try { await recordHandlerError(env, name, err); } catch {}
+		throw err;
+	} finally {
+		const durationMs = Date.now() - start;
+		recordSelfTelemetry(env, name, durationMs, ok);
+		try { await recordCronExecution(env, name, durationMs, ok); } catch {}
+	}
+}
 
 /**
  * Cron multiplexer — dispatches to the appropriate handler based on the cron expression.
@@ -28,26 +50,28 @@ export async function handleScheduled(
 		// 15-minute checks
 		if (cron === '*/15 * * * *') {
 			const results = await Promise.allSettled([
-				detectGaps(env),
-				detectCostSpikes(env),
+				runAndRecord(env, 'gap-detection', () => detectGaps(env)),
+				runAndRecord(env, 'cost-spike', () => detectCostSpikes(env)),
 			]);
 			success = results.every((r) => r.status === 'fulfilled');
+			// Staleness check piggybacked on 15-min cron
+			ctx.waitUntil(checkCronStaleness(env));
 		}
 		// Hourly checks
 		else if (cron === '0 * * * *') {
 			const results = await Promise.allSettled([
-				collectAccountMetrics(env),
-				collectAccountUsage(env),
-				checkBudgets(env),
-				runSyntheticHealthCheck(env),
+				runAndRecord(env, 'collect-metrics', () => collectAccountMetrics(env)),
+				runAndRecord(env, 'collect-account-usage', () => collectAccountUsage(env)),
+				runAndRecord(env, 'budget-check', () => checkBudgets(env)),
+				runAndRecord(env, 'synthetic-health', () => runSyntheticHealthCheck(env)),
 			]);
 			success = results.every((r) => r.status === 'fulfilled');
 		}
 		// Daily midnight
 		else if (cron === '0 0 * * *') {
 			const results = await Promise.allSettled([
-				runDailyRollup(env),
-				discoverWorkers(env),
+				runAndRecord(env, 'daily-rollup', () => runDailyRollup(env)),
+				runAndRecord(env, 'worker-discovery', () => discoverWorkers(env)),
 			]);
 			success = results.every((r) => r.status === 'fulfilled');
 		}
