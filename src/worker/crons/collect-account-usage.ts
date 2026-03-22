@@ -60,32 +60,36 @@ async function queryCoreServices(
 	start: Date,
 	end: Date
 ): Promise<ServiceUsageSnapshot['services']> {
-	const startStr = start.toISOString();
-	const endStr = end.toISOString();
+	// *Adaptive datasets use datetime filters (ISO 8601)
+	// *AdaptiveGroups datasets use date filters (YYYY-MM-DD)
+	const startDatetime = start.toISOString();
+	const endDatetime = end.toISOString();
+	const startDate = start.toISOString().slice(0, 10);
+	const endDate = end.toISOString().slice(0, 10);
 
 	const query = `{
   viewer {
     accounts(filter: { accountTag: "${env.CF_ACCOUNT_ID}" }) {
       workersInvocationsAdaptive(
-        filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
+        filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }
         limit: 1000
       ) {
         sum { requests wallTime }
       }
       d1AnalyticsAdaptiveGroups(
-        filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
+        filter: { date_geq: "${startDate}", date_leq: "${endDate}" }
         limit: 100
       ) {
         sum { rowsRead rowsWritten }
       }
       kvOperationsAdaptiveGroups(
-        filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
+        filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }
         limit: 100
       ) {
         sum { readOperations writeOperations listOperations deleteOperations }
       }
       r2OperationsAdaptiveGroups(
-        filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
+        filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }
         limit: 100
       ) {
         dimensions { actionType }
@@ -188,14 +192,17 @@ async function queryExtraServices(
 	const startStr = start.toISOString();
 	const endStr = end.toISOString();
 
-	// Only Durable Objects has a GraphQL Analytics dataset.
+	// Only Durable Objects has a GraphQL Analytics dataset among extra services.
 	// AI Gateway, Vectorize, and Queues do NOT have GraphQL datasets —
 	// they use REST APIs or dashboard-only metrics.
+	const startDatetime = startStr;
+	const endDatetime = endStr;
+
 	const query = `{
   viewer {
     accounts(filter: { accountTag: "${env.CF_ACCOUNT_ID}" }) {
       durableObjectsInvocationsAdaptiveGroups(
-        filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
+        filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }
         limit: 100
       ) {
         sum { requests }
