@@ -2,12 +2,22 @@
 
 All notable changes to cf-monitor are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-03-22
+
+### Fixed
+- Wrong GraphQL dataset names for usage collection — `d1AnalyticsAdaptive` corrected to `d1AnalyticsAdaptiveGroups`, removed 4 non-existent datasets (AI Gateway, Vectorize, Queues) (#57)
+- D1 GraphQL dataset requires `date_geq`/`date_leq` filters (YYYY-MM-DD), not `datetime_geq` (ISO 8601) — caused entire query to fail (#58)
+- Single GraphQL query failure killed all service results — split into 5 parallel per-service queries for isolation (#59)
+
+### Changed
+- Account usage collection now queries 5 CF services with GraphQL datasets (Workers, D1, KV, R2, Durable Objects). AI Gateway, Vectorize, and Queues do not have GraphQL Analytics datasets — may be added via REST APIs later.
+
 ## [0.3.0] - 2026-03-22
 
 ### Added
 - **Plan detection** (#53): Auto-detects Workers Free vs Paid plan via CF Subscriptions API. Budget auto-seeding now selects correct defaults for each plan. CLI `status` and `GET /status` show detected plan.
 - **Billing-period-aware budgets** (#54): Monthly budget tracking aligned to actual CF billing cycle (not calendar month). Gradual migration — old keys expire via TTL, both formats checked during transition.
-- **Account-wide usage collection** (#55): Hourly GraphQL queries for 9 CF services (D1, KV, R2, Workers, Workers AI, AI Gateway, Durable Objects, Vectorize, Queues). New `GET /usage` endpoint and `npx cf-monitor usage` CLI command.
+- **Account-wide usage collection** (#55): Hourly GraphQL queries for 5 CF services (D1, KV, R2, Workers, Durable Objects). New `GET /usage` endpoint and `npx cf-monitor usage` CLI command.
 - New `GET /plan` endpoint — returns detected plan type, billing period, days remaining, and plan allowances
 - New `GET /usage` endpoint — returns per-service usage with plan context and data accuracy disclaimer
 - New `npx cf-monitor usage` CLI command — formatted table with colour-coded % of plan used
@@ -102,6 +112,7 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
+[0.3.1]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.0...v0.2.1

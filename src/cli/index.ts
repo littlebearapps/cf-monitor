@@ -30,7 +30,7 @@ const program = new Command();
 program
 	.name('cf-monitor')
 	.description('Self-contained Cloudflare account monitoring')
-	.version('0.3.0');
+	.version('0.3.1');
 
 program
 	.command('init')

@@ -1,6 +1,6 @@
 {
   "name": "@littlebearapps/cf-monitor",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Self-contained Cloudflare account monitoring: error collection, feature budgets, circuit breakers, cost protection. One worker per account.",
   "type": "module",
   "main": "./src/index.ts",

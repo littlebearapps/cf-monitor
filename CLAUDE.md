@@ -38,7 +38,7 @@
 | **Language** | TypeScript |
 | **Runtime** | Cloudflare Workers |
 | **npm** | `@littlebearapps/cf-monitor` |
-| **Status** | v0.3.0 — production-tested, published to npm |
+| **Status** | v0.3.1 — production-tested, published to npm |
 | **Repository** | https://github.com/littlebearapps/cf-monitor |
 | **Licence** | MIT |
 | **Issues** | https://github.com/littlebearapps/cf-monitor/issues |
@@ -237,7 +237,15 @@ Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
 
 **#54 — Billing-period-aware budgets**: Monthly KV keys transition from `YYYY-MM` to `YYYY-MM-DD` (billing period start). Billing period cached in KV (32d TTL). `checkMonthlyBudgets()` checks both old and new key formats during transition (sums usage). SDK-side module-level cache (1hr TTL per isolate) avoids per-invocation KV reads. `GET /budgets` includes `billingPeriod`. Falls back to calendar month if unavailable.
 
-**#55 — Account-wide usage collection**: Hourly `collect-account-usage` cron queries CF GraphQL for 9 services (D1, KV, R2, Workers, AI Gateway, DO, Vectorize, Queues). Daily snapshots stored in KV (`usage:account:{date}`, 32d TTL). New `GET /usage` endpoint with plan context + disclaimer. New `npx cf-monitor usage` CLI. Uses existing `CLOUDFLARE_API_TOKEN` — no new token needed. Data is approximate per CF documentation.
+**#55 — Account-wide usage collection**: Hourly `collect-account-usage` cron queries CF GraphQL for 5 services (Workers, D1, KV, R2, Durable Objects). Daily snapshots stored in KV (`usage:account:{date}`, 32d TTL). New `GET /usage` endpoint with plan context + disclaimer. New `npx cf-monitor usage` CLI. Uses existing `CLOUDFLARE_API_TOKEN` — no new token needed. Data is approximate per CF documentation. AI Gateway, Vectorize, and Queues do not have GraphQL Analytics datasets — may be added via REST APIs later.
+
+## Bug Fixes (v0.3.1)
+
+**#57 — Wrong GraphQL dataset names**: FIXED. `d1AnalyticsAdaptive` corrected to `d1AnalyticsAdaptiveGroups`. Removed 4 non-existent datasets (AI Gateway, Vectorize, Queues producer/consumer) — these services don't have GraphQL Analytics datasets. Service count corrected from 9 to 5.
+
+**#58 — D1 date filter format**: FIXED. D1's `d1AnalyticsAdaptiveGroups` requires `date_geq`/`date_leq` (YYYY-MM-DD), not `datetime_geq` (ISO 8601). Caused entire batched GraphQL query to fail with "unknown arg datetime_geq".
+
+**#59 — Single query kills all results**: FIXED. Split core services into 5 parallel GraphQL queries (Workers, D1, KV, R2, DO). Each individually try-caught. If one service query fails, the others still return data. Costs 5 requests instead of 2 but well within CF's 25/5min rate limit.
 
 ## Bug Fixes (v0.2.2)
 
