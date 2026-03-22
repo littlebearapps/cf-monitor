@@ -7,6 +7,9 @@ import { createMockCtx, createMockScheduledController } from '../helpers/mock-re
 vi.mock('../../src/worker/crons/gap-detection.js', () => ({
 	detectGaps: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock('../../src/worker/crons/cost-spike.js', () => ({
+	detectCostSpikes: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('../../src/worker/crons/collect-metrics.js', () => ({
 	collectAccountMetrics: vi.fn().mockResolvedValue(undefined),
 }));
@@ -24,6 +27,7 @@ vi.mock('../../src/worker/crons/worker-discovery.js', () => ({
 }));
 
 import { detectGaps } from '../../src/worker/crons/gap-detection.js';
+import { detectCostSpikes } from '../../src/worker/crons/cost-spike.js';
 import { collectAccountMetrics } from '../../src/worker/crons/collect-metrics.js';
 import { checkBudgets } from '../../src/worker/crons/budget-check.js';
 import { runSyntheticHealthCheck } from '../../src/worker/crons/synthetic-health.js';
@@ -86,7 +90,7 @@ describe('handleScheduled', () => {
 		expect(runDailyRollup).not.toHaveBeenCalled();
 	});
 
-	it('pings Gatus heartbeat when configured', async () => {
+	it('pings Gatus heartbeat on unknown cron with success=false', async () => {
 		const env = createMockMonitorWorkerEnv({
 			GATUS_HEARTBEAT_URL: 'https://gatus.example.com/heartbeat',
 			GATUS_TOKEN: 'token123',
@@ -97,7 +101,61 @@ describe('handleScheduled', () => {
 		await ctx._flush();
 
 		expect(mockFetch).toHaveBeenCalledWith(
-			expect.stringContaining('gatus.example.com'),
+			'https://gatus.example.com/heartbeat?success=false',
+			expect.objectContaining({ method: 'POST' })
+		);
+	});
+
+	it('pings Gatus heartbeat after successful hourly cron', async () => {
+		const env = createMockMonitorWorkerEnv({
+			GATUS_HEARTBEAT_URL: 'https://gatus.example.com/heartbeat',
+			GATUS_TOKEN: 'token123',
+		});
+		const ctx = createMockCtx();
+
+		await handleScheduled(createMockScheduledController('0 * * * *'), env, ctx);
+		await ctx._flush();
+
+		expect(collectAccountMetrics).toHaveBeenCalled();
+		expect(mockFetch).toHaveBeenCalledWith(
+			'https://gatus.example.com/heartbeat?success=true',
+			expect.objectContaining({ method: 'POST' })
+		);
+	});
+
+	it('pings Gatus heartbeat after successful 15-min cron', async () => {
+		const env = createMockMonitorWorkerEnv({
+			GATUS_HEARTBEAT_URL: 'https://gatus.example.com/heartbeat',
+			GATUS_TOKEN: 'token123',
+		});
+		const ctx = createMockCtx();
+
+		await handleScheduled(createMockScheduledController('*/15 * * * *'), env, ctx);
+		await ctx._flush();
+
+		expect(detectGaps).toHaveBeenCalled();
+		expect(mockFetch).toHaveBeenCalledWith(
+			'https://gatus.example.com/heartbeat?success=true',
+			expect.objectContaining({ method: 'POST' })
+		);
+	});
+
+	it('sends success=false heartbeat when cron handler rejects', async () => {
+		vi.mocked(collectAccountMetrics).mockRejectedValueOnce(new Error('fail'));
+		vi.mocked(checkBudgets).mockRejectedValueOnce(new Error('fail'));
+		vi.mocked(runSyntheticHealthCheck).mockRejectedValueOnce(new Error('fail'));
+
+		const env = createMockMonitorWorkerEnv({
+			GATUS_HEARTBEAT_URL: 'https://gatus.example.com/heartbeat',
+			GATUS_TOKEN: 'token123',
+		});
+		const ctx = createMockCtx();
+
+		await handleScheduled(createMockScheduledController('0 * * * *'), env, ctx);
+		await ctx._flush();
+
+		expect(mockFetch).toHaveBeenCalledWith(
+			'https://gatus.example.com/heartbeat?success=false',
 			expect.objectContaining({ method: 'POST' })
 		);
 	});
