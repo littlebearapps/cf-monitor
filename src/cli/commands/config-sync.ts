@@ -166,7 +166,7 @@ function extractBudgets(
 			if (metricMatch) {
 				const metric = metricMatch[1];
 				const value = parseInt(metricMatch[2].replace(/_/g, ''), 10);
-				if (!currentFeature) currentFeature = '__default__';
+				if (!currentFeature) currentFeature = '__account__';
 				if (!result[currentFeature]) result[currentFeature] = {};
 				result[currentFeature][metric] = value;
 			}
