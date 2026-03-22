@@ -60,59 +60,42 @@ async function queryCoreServices(
 	start: Date,
 	end: Date
 ): Promise<ServiceUsageSnapshot['services']> {
-	// *Adaptive datasets use datetime filters (ISO 8601)
-	// *AdaptiveGroups datasets use date filters (YYYY-MM-DD)
+	const services: ServiceUsageSnapshot['services'] = {};
 	const startDatetime = start.toISOString();
 	const endDatetime = end.toISOString();
 	const startDate = start.toISOString().slice(0, 10);
 	const endDate = end.toISOString().slice(0, 10);
+	const accountFilter = `accountTag: "${env.CF_ACCOUNT_ID}"`;
 
-	const query = `{
-  viewer {
-    accounts(filter: { accountTag: "${env.CF_ACCOUNT_ID}" }) {
-      workersInvocationsAdaptive(
-        filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }
-        limit: 1000
-      ) {
-        sum { requests wallTime }
-      }
-      d1AnalyticsAdaptiveGroups(
-        filter: { date_geq: "${startDate}", date_leq: "${endDate}" }
-        limit: 100
-      ) {
-        sum { rowsRead rowsWritten }
-      }
-      kvOperationsAdaptiveGroups(
-        filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }
-        limit: 100
-      ) {
-        sum { readOperations writeOperations listOperations deleteOperations }
-      }
-      r2OperationsAdaptiveGroups(
-        filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }
-        limit: 100
-      ) {
-        dimensions { actionType }
-        sum { requests }
-      }
-    }
-  }
-}`;
-
-	const result = await executeGraphQL(env, query);
-	if (!result) return {};
-
-	const account = result.data?.viewer?.accounts?.[0];
-	if (!account) {
-		console.warn('[cf-monitor:usage] No account data in core GraphQL response');
-		return {};
-	}
-
-	const services: ServiceUsageSnapshot['services'] = {};
+	// Query each service separately — a single invalid field kills the entire GraphQL response.
+	// This costs more requests but ensures partial results are always captured.
+	const [workersResult, d1Result, kvResult, r2Result] = await Promise.all([
+		executeGraphQL(env, `{ viewer { accounts(filter: { ${accountFilter} }) {
+			workersInvocationsAdaptive(filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }, limit: 1000) {
+				sum { requests wallTime }
+			}
+		} } }`),
+		executeGraphQL(env, `{ viewer { accounts(filter: { ${accountFilter} }) {
+			d1AnalyticsAdaptiveGroups(filter: { date_geq: "${startDate}", date_leq: "${endDate}" }, limit: 100) {
+				sum { rowsRead rowsWritten }
+			}
+		} } }`),
+		executeGraphQL(env, `{ viewer { accounts(filter: { ${accountFilter} }) {
+			kvOperationsAdaptiveGroups(filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }, limit: 100) {
+				sum { readOperations writeOperations listOperations deleteOperations }
+			}
+		} } }`),
+		executeGraphQL(env, `{ viewer { accounts(filter: { ${accountFilter} }) {
+			r2OperationsAdaptiveGroups(filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }, limit: 100) {
+				dimensions { actionType }
+				sum { requests }
+			}
+		} } }`),
+	]);
 
 	// Workers
 	try {
-		const workers = account.workersInvocationsAdaptive;
+		const workers = workersResult?.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive;
 		if (workers?.length) {
 			let totalRequests = 0;
 			let totalCpuMs = 0;
@@ -122,11 +105,11 @@ async function queryCoreServices(
 			}
 			services.workers = { requests: totalRequests, cpuMs: totalCpuMs };
 		}
-	} catch { /* service unavailable — skip */ }
+	} catch { /* skip */ }
 
 	// D1
 	try {
-		const d1 = account.d1AnalyticsAdaptiveGroups;
+		const d1 = d1Result?.data?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups;
 		if (d1?.length) {
 			let rowsRead = 0;
 			let rowsWritten = 0;
@@ -140,7 +123,7 @@ async function queryCoreServices(
 
 	// KV
 	try {
-		const kv = account.kvOperationsAdaptiveGroups;
+		const kv = kvResult?.data?.viewer?.accounts?.[0]?.kvOperationsAdaptiveGroups;
 		if (kv?.length) {
 			let reads = 0;
 			let writes = 0;
@@ -158,15 +141,13 @@ async function queryCoreServices(
 
 	// R2
 	try {
-		const r2 = account.r2OperationsAdaptiveGroups;
+		const r2 = r2Result?.data?.viewer?.accounts?.[0]?.r2OperationsAdaptiveGroups;
 		if (r2?.length) {
 			let classA = 0;
 			let classB = 0;
 			for (const entry of r2) {
 				const action = entry.dimensions?.actionType ?? '';
 				const count = entry.sum?.requests ?? 0;
-				// Class A: ListBuckets, PutObject, CopyObject, CreateMultipartUpload, etc.
-				// Class B: GetObject, HeadObject
 				if (['GetObject', 'HeadObject', 'ListBucket'].includes(action)) {
 					classB += count;
 				} else {

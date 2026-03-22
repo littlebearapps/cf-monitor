@@ -39,11 +39,17 @@ describe('collectAccountUsage', () => {
 	it('stores daily usage snapshot in KV', async () => {
 		const env = mockEnv();
 		vi.spyOn(globalThis, 'fetch')
-			// Core services query
+			// Core services — 4 separate queries (Workers, D1, KV, R2)
 			.mockResolvedValueOnce(graphqlResponse({
 				workersInvocationsAdaptive: [{ sum: { requests: 1000, wallTime: 5000 } }],
+			}))
+			.mockResolvedValueOnce(graphqlResponse({
 				d1AnalyticsAdaptiveGroups: [{ sum: { rowsRead: 50000, rowsWritten: 1000 } }],
+			}))
+			.mockResolvedValueOnce(graphqlResponse({
 				kvOperationsAdaptiveGroups: [{ sum: { readOperations: 3000, writeOperations: 100, listOperations: 5, deleteOperations: 2 } }],
+			}))
+			.mockResolvedValueOnce(graphqlResponse({
 				r2OperationsAdaptiveGroups: [],
 			}))
 			// Extra services query (Durable Objects only)
@@ -72,11 +78,17 @@ describe('collectAccountUsage', () => {
 	it('handles partial GraphQL failures gracefully', async () => {
 		const env = mockEnv();
 		vi.spyOn(globalThis, 'fetch')
-			// Core services succeed
+			// Workers succeeds
 			.mockResolvedValueOnce(graphqlResponse({
 				workersInvocationsAdaptive: [{ sum: { requests: 500, wallTime: 1000 } }],
 			}))
-			// Extra services fail
+			// D1 fails
+			.mockResolvedValueOnce(new Response('Internal Server Error', { status: 500 }))
+			// KV fails
+			.mockResolvedValueOnce(new Response('Internal Server Error', { status: 500 }))
+			// R2 fails
+			.mockResolvedValueOnce(new Response('Internal Server Error', { status: 500 }))
+			// DO fails
 			.mockResolvedValueOnce(new Response('Internal Server Error', { status: 500 }));
 
 		await collectAccountUsage(env);
@@ -92,6 +104,9 @@ describe('collectAccountUsage', () => {
 		const env = mockEnv();
 		vi.spyOn(globalThis, 'fetch')
 			.mockResolvedValueOnce(graphqlResponse({}))
+			.mockResolvedValueOnce(graphqlResponse({}))
+			.mockResolvedValueOnce(graphqlResponse({}))
+			.mockResolvedValueOnce(graphqlResponse({}))
 			.mockResolvedValueOnce(graphqlResponse({}));
 
 		await collectAccountUsage(env);
@@ -105,12 +120,18 @@ describe('collectAccountUsage', () => {
 	it('aggregates multiple entries per service', async () => {
 		const env = mockEnv();
 		vi.spyOn(globalThis, 'fetch')
+			// Workers with multiple entries
 			.mockResolvedValueOnce(graphqlResponse({
 				workersInvocationsAdaptive: [
 					{ sum: { requests: 300, wallTime: 1000 } },
 					{ sum: { requests: 700, wallTime: 2000 } },
 				],
 			}))
+			// D1, KV, R2 empty
+			.mockResolvedValueOnce(graphqlResponse({}))
+			.mockResolvedValueOnce(graphqlResponse({}))
+			.mockResolvedValueOnce(graphqlResponse({}))
+			// DO empty
 			.mockResolvedValueOnce(graphqlResponse({}));
 
 		await collectAccountUsage(env);
