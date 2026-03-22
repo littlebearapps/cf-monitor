@@ -3,6 +3,7 @@ import type { MonitorWorkerEnv, TailOutcome } from '../types.js';
 import { computeFingerprint } from './errors/fingerprint.js';
 import { matchTransientPattern } from './errors/patterns.js';
 import { createGitHubIssue } from './errors/github.js';
+import { recordSelfTelemetry, recordHandlerError } from './self-monitor.js';
 
 /**
  * Process tail events from all tailed workers on this account.
@@ -13,13 +14,28 @@ export async function handleTailEvents(
 	env: MonitorWorkerEnv,
 	_ctx: ExecutionContext
 ): Promise<void> {
+	const start = Date.now();
+	let errorCount = 0;
 	for (const event of events) {
 		try {
 			await processEvent(event, env);
 		} catch (err) {
 			// Never let one event failure break the batch
+			errorCount++;
 			console.error(`[cf-monitor:tail] Error processing event from ${event.scriptName}: ${err}`);
 		}
+	}
+
+	// Self-monitoring: record tail batch processing
+	const durationMs = Date.now() - start;
+	const batchSuccess = errorCount === 0;
+	try {
+		recordSelfTelemetry(env, 'tail', durationMs, batchSuccess);
+		if (errorCount > 0) {
+			await recordHandlerError(env, 'tail', new Error(`${errorCount}/${events.length} events failed`));
+		}
+	} catch {
+		// Self-monitoring must never break tail processing
 	}
 }
 
