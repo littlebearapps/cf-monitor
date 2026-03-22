@@ -77,6 +77,11 @@ export const KV = {
 
 	// AI patterns (optional)
 	PATTERNS_APPROVED: 'patterns:approved',
+
+	// Self-monitoring (#44)
+	SELF_CRON_LAST_RUN: 'self:v1:cron:last_run',
+	SELF_ERROR_COUNT: 'self:v1:error:',
+	SELF_ERRORS_TOTAL: 'self:v1:errors:count:',
 } as const;
 
 // =============================================================================
@@ -105,6 +110,22 @@ export const MONITOR_BINDINGS = {
 	KV: 'CF_MONITOR_KV',
 	AE: 'CF_MONITOR_AE',
 } as const;
+
+// =============================================================================
+// CRON HANDLER REGISTRY (#44)
+// =============================================================================
+
+/** Cron handler registry for staleness detection. maxStaleMinutes = ~2x expected interval. */
+export const CRON_HANDLER_REGISTRY: Record<string, { schedule: string; maxStaleMinutes: number }> = {
+	'gap-detection': { schedule: '*/15', maxStaleMinutes: 45 },
+	'cost-spike': { schedule: '*/15', maxStaleMinutes: 45 },
+	'collect-metrics': { schedule: 'hourly', maxStaleMinutes: 150 },
+	'collect-account-usage': { schedule: 'hourly', maxStaleMinutes: 150 },
+	'budget-check': { schedule: 'hourly', maxStaleMinutes: 150 },
+	'synthetic-health': { schedule: 'hourly', maxStaleMinutes: 150 },
+	'daily-rollup': { schedule: 'daily', maxStaleMinutes: 1500 },
+	'worker-discovery': { schedule: 'daily', maxStaleMinutes: 1500 },
+};
 
 // =============================================================================
 // DEFAULTS
