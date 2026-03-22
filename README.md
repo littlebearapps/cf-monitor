@@ -1,28 +1,37 @@
-# cf-monitor
+<p align="center">
+  <strong>@littlebearapps/cf-monitor</strong><br>
+  Self-contained Cloudflare account monitoring.<br>
+  One worker. Zero migrations. Born from a $4,868 bill.
+</p>
 
-**Self-contained Cloudflare account monitoring. One worker. Zero migrations.**
+<p align="center">
+  <a href="https://www.npmjs.com/package/@littlebearapps/cf-monitor"><img src="https://img.shields.io/npm/v/@littlebearapps/cf-monitor" alt="npm" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@littlebearapps/cf-monitor" alt="licence" /></a>
+  <a href="https://github.com/littlebearapps/cf-monitor/actions"><img src="https://img.shields.io/github/actions/workflow/status/littlebearapps/cf-monitor/ci.yml?label=tests" alt="CI" /></a>
+</p>
 
-Error collection, feature budgets, circuit breakers, cost protection — with zero D1 dependencies and a single `monitor()` export.
-
-[![npm](https://img.shields.io/npm/v/@littlebearapps/cf-monitor)](https://www.npmjs.com/package/@littlebearapps/cf-monitor)
-[![licence](https://img.shields.io/npm/l/@littlebearapps/cf-monitor)](./LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/littlebearapps/cf-monitor/ci.yml?label=tests)](https://github.com/littlebearapps/cf-monitor/actions)
-
-[Quick Start](#quick-start) · [Features](#features) · [SDK API](#sdk-api) · [CLI](#cli-commands) · [Docs](./docs/) · [Contributing](./CONTRIBUTING.md)
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> · <a href="#-features">Features</a> · <a href="#-sdk-api">SDK API</a> · <a href="#-cli-commands">CLI</a> · <a href="#-documentation">Docs</a> · <a href="#-contributing">Contributing</a>
+</p>
 
 ---
 
-## Why cf-monitor?
+Cloudflare Workers are great until a bug writes 4.8 billion D1 rows while you're asleep. cf-monitor wraps your workers with a single `monitor()` call, tracks every D1/KV/R2/AI/Queue operation, and shuts things down before they become expensive. One npm package, one worker per account, three CLI commands to production.
+
+---
+
+## 🛡️ Why cf-monitor?
 
 Traditional monitoring SDKs need a central account, cross-account forwarding, HMAC secrets, and a fleet of workers to process telemetry. cf-monitor is different.
 
-- **One worker per account** — install on any Cloudflare account and it monitors everything on that account. No central infrastructure, no cross-account complexity.
-- **Zero D1, zero queues** — all metrics go to Analytics Engine (100M writes/month free). State lives in a single KV namespace. No database migrations, ever.
-- **Three commands to production** — `init`, `deploy`, `wire`. Your workers are monitored in minutes, not hours.
-- **Fail-open by default** — if cf-monitor has an internal error, your worker keeps running normally. Monitoring never becomes the problem.
-- **Born from a $4,868 bill** — an infinite D1 write loop produced 4.8 billion rows before anyone noticed. cf-monitor's per-invocation limits and circuit breakers exist so that never happens again.
+- **Your account monitors itself** — install on any Cloudflare account and it discovers all workers, tracks every binding call, and creates GitHub issues for errors. No central infrastructure, no cross-account secrets.
+- **Three commands from zero to monitored** — `init`, `deploy`, `wire`. Budget defaults auto-calculated from your plan. You can be monitoring in production before your coffee gets cold.
+- **Circuit breakers that actually trip** — per-invocation limits catch infinite loops on the first request. Daily budgets warn at 70%, stop at 100%. Monthly budgets align to your billing cycle. The runaway D1 loop from January 2026 ($3,434) would have been stopped at row 1,001.
+- **Zero D1, zero queues, zero migrations** — metrics go to Analytics Engine (100M writes/month free). State lives in KV. No database schema to maintain, no queue infrastructure to provision.
+- **Fail-open by default** — if cf-monitor has an internal error, your worker keeps running normally. Monitoring should never be the thing that breaks production.
+- **Built for solo developers** — one worker per account, auto-discovery, auto-budgets, Slack alerts with dedup. Designed for people who ship fast and sleep well.
 
-## Quick Start
+## ⚡ Quick Start
 
 ### 1. Install
 
@@ -61,34 +70,29 @@ export default monitor({
 
 That's it. Worker name, feature IDs, bindings, and budgets are all auto-detected.
 
-## Features
+## 🎯 Features
 
-### Core
-
-| Feature | What it does for you |
-|---------|---------------------|
-| **Error Collection** | Tail worker captures errors from all workers on the account, deduplicates via fingerprinting, and creates GitHub issues with priority labels (P0-P4). You find out about errors in seconds, not days. |
-| **Feature Budgets** | Per-feature daily and monthly resource limits with automatic circuit breakers. Set a budget, get warned at 70% and 90%, and the feature stops at 100% before it costs you money. |
-| **Circuit Breakers** | Three-tier kill switches — feature-level, account-level, and global emergency stop — all via KV. Reset automatically after a configurable TTL. |
-| **Cost Protection** | Per-invocation resource limits prevent runaway loops. Catches the bug that would become a $5K billing incident and stops it on the first request. |
-| **Gap Detection** | Identifies workers on the account that aren't sending telemetry. Shows you where monitoring coverage is missing so nothing falls through the cracks. |
-| **Worker Discovery** | Auto-discovers all workers on the account via the Cloudflare API. No manual registry — add a new worker and cf-monitor finds it. |
-| **Slack Alerts** | Budget warnings, error notifications, gap alerts, and cost spike alerts — all with KV-based deduplication so you don't get spammed. |
-| **Cost Spike Detection** | Flags when hourly costs exceed 200% of the 24-hour baseline. Catches anomalies before they become expensive. |
-| **Synthetic Health Checks** | Hourly CB pipeline validation: trip a test breaker, verify it blocks, reset it, verify it passes. Proves your safety net works. |
-| **Plan Detection** | Auto-detects Workers Free vs Paid plan via CF Subscriptions API. Selects correct budget defaults automatically — no config needed. |
-| **Billing Period Tracking** | Aligns monthly budgets to your actual CF billing cycle (e.g. 2nd to 2nd), not calendar months. Prevents misalignment at period boundaries. |
-| **Account Usage Dashboard** | Queries CF GraphQL API hourly for 9 services (D1, KV, R2, Workers, AI, AI Gateway, DO, Vectorize, Queues). Shows % of plan used via `GET /usage` and `npx cf-monitor usage`. |
+- 🐛 **Error collection** — tail worker captures errors from every worker, deduplicates via fingerprint, creates GitHub issues with P0–P4 priority labels
+- 💰 **Feature budgets** — per-feature daily and monthly limits with automatic circuit breakers. Warned at 70%, stopped at 100%
+- 🔴 **Circuit breakers** — three-tier kill switches (feature, account, global) via KV. Auto-reset after configurable TTL
+- 🛡️ **Cost protection** — per-invocation limits prevent runaway loops. Catches the $5K bug on the first request
+- 📡 **Gap detection** — identifies workers that aren't sending telemetry. Shows where coverage is missing
+- 🔍 **Worker discovery** — auto-discovers all workers via CF API. No manual registry needed
+- 🔔 **Slack alerts** — budget warnings, errors, gaps, cost spikes. KV-based dedup so you don't get spammed
+- 📈 **Cost spike detection** — flags when hourly costs exceed 200% of the 24-hour baseline
+- ❤️ **Synthetic health checks** — hourly CB pipeline validation: trip, verify, reset, verify
+- 📊 **Plan detection** — auto-detects Free vs Paid plan. Selects correct budget defaults automatically
+- 📅 **Billing period tracking** — aligns monthly budgets to your actual billing cycle, not calendar months
+- 📋 **Account usage dashboard** — queries CF GraphQL for Workers, D1, KV, R2, and Durable Objects. Shows % of plan used
+- 🔧 **Self-monitoring** — tracks its own cron execution, error rates, and staleness. Alerts if cf-monitor itself is unhealthy
 
 ### Optional (AI-powered, disabled by default)
 
-| Feature | What it does for you |
-|---------|---------------------|
-| **Pattern Discovery** | AI-assisted detection of new transient error patterns from unclassified errors |
-| **Health Reports** | Natural language account health summaries posted to Slack |
-| **Coverage Auditor** | AI scoring of how well cf-monitor is integrated across each worker |
+- 🤖 **Pattern discovery** — AI detection of transient error patterns (opt-in)
+- 📝 **Health reports** — natural language account health summaries (opt-in)
+- 🔬 **Coverage auditor** — AI scoring of integration quality (opt-in)
 
-## SDK API
+## 🔧 SDK API
 
 ### Zero-config (most workers)
 
@@ -141,7 +145,7 @@ export default monitor({
 | Budget defaults | Auto-detected from CF plan (free/paid) via Subscriptions API | `budgets` in config or `config sync` CLI |
 | Health endpoint | `/_monitor/health` | `healthEndpoint` option or `false` to disable |
 
-## Architecture
+## 🏗️ Architecture
 
 ```
                     +-----------------------------------------+
@@ -177,7 +181,7 @@ Your Workers -tail->|  tail()  -> fingerprint -> GitHub Issues |-> Issues
 
 D1 (reads, writes, rows) · KV (reads, writes, deletes, lists) · R2 (Class A, Class B) · Workers AI (requests, neurons) · Vectorize (queries, inserts) · Queue (messages) · Durable Objects (requests) · Workflows (invocations)
 
-## CLI Commands
+## 💻 CLI Commands
 
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
@@ -193,7 +197,7 @@ D1 (reads, writes, rows) · KV (reads, writes, deletes, lists) · R2 (Class A, C
 | `npx cf-monitor upgrade` | Safe npm update + re-deploy | `--dry-run` |
 | `npx cf-monitor migrate` | Migrate from platform-consumer-sdk | `--from` |
 
-## API Endpoints
+## 🌐 API Endpoints
 
 The monitor worker exposes these endpoints:
 
@@ -206,13 +210,14 @@ The monitor worker exposes these endpoints:
 | GET | `/workers` | Auto-discovered workers on the account |
 | GET | `/plan` | Detected plan type, billing period, days remaining, allowances |
 | GET | `/usage` | Account-wide per-service usage with plan context (approximate) |
+| GET | `/self-health` | Self-monitoring status: stale crons, error counts, handler breakdown |
 | POST | `/webhooks/github` | GitHub webhook receiver (issue close/reopen/mute sync) |
 | POST | `/admin/cron/{name}` | Manually trigger any cron (for testing) |
 | POST | `/admin/cb/trip` | Trip a feature circuit breaker |
 | POST | `/admin/cb/reset` | Reset a feature circuit breaker |
 | POST | `/admin/cb/account` | Set account-level CB status |
 
-## Configuration
+## ⚙️ Configuration
 
 Generated by `npx cf-monitor init` — see [full reference](./docs/configuration.md).
 
@@ -243,7 +248,35 @@ alerts:
 #   health_reports: false
 ```
 
-## Comparison with platform-consumer-sdk
+## 📦 Requirements
+
+- **Node.js 20+** (22 recommended)
+- **npm 10+**
+- **A Cloudflare account** (Free or Paid — plan auto-detected)
+- **At least one deployed Worker** on the account
+- **Wrangler CLI** installed (`npm install -g wrangler`)
+- **A Cloudflare API token** with:
+  - Workers KV Storage: Edit
+  - Account Analytics: Read
+  - Workers Scripts: Edit
+  - *Optional*: Account Settings: Read (for automatic plan detection)
+
+## 🔄 Upgrading
+
+```bash
+npm update @littlebearapps/cf-monitor
+npx cf-monitor upgrade              # re-deploys the monitor worker
+```
+
+Or preview first:
+
+```bash
+npx cf-monitor upgrade --dry-run
+```
+
+See the [changelog](./CHANGELOG.md) for version history.
+
+## 🔀 Migrating from platform-consumer-sdk
 
 | | platform-consumer-sdk | cf-monitor |
 |---|---|---|
@@ -256,8 +289,6 @@ alerts:
 | **SDK API** | 18 sub-path exports | 1 export: `monitor()` |
 | **Cross-account** | HMAC secrets, platform-agents | Not needed |
 | **Feature IDs** | Manual registration in YAML | Auto-generated |
-
-## Migrating from platform-consumer-sdk
 
 ```typescript
 // Before (platform-consumer-sdk)
@@ -280,25 +311,42 @@ export default monitor({
 });
 ```
 
-Wrangler binding changes:
-- `PLATFORM_CACHE` (KV) -> `CF_MONITOR_KV`
-- `PLATFORM_ANALYTICS` (AE) -> `CF_MONITOR_AE`
-- Remove `PLATFORM_TELEMETRY` (Queue) — no longer needed
+Binding changes: `PLATFORM_CACHE` → `CF_MONITOR_KV`, `PLATFORM_ANALYTICS` → `CF_MONITOR_AE`, remove `PLATFORM_TELEMETRY` (Queue).
 
 Or use the CLI: `npx cf-monitor migrate --from platform-consumer-sdk`
 
-## Documentation
+See the [full migration guide](./docs/how-to/migrate-from-platform-sdk.md) for detailed steps.
 
-| Guide | Description |
-|-------|-------------|
-| [Getting Started](./docs/getting-started.md) | Step-by-step from install to verified monitoring |
-| [Configuration Reference](./docs/configuration.md) | Complete cf-monitor.yaml and SDK options reference |
-| [Error Collection](./docs/guides/error-collection.md) | How fingerprinting, dedup, and GitHub issues work |
-| [Budgets & Circuit Breakers](./docs/guides/budgets-and-circuit-breakers.md) | Per-invocation limits, daily/monthly budgets, CB mechanics |
-| [Cost Protection](./docs/guides/cost-protection.md) | The $4,868 story and how cf-monitor prevents it |
-| [Troubleshooting](./docs/troubleshooting.md) | Common issues and their solutions |
+## 📚 Documentation
 
-## Contributing
+### Getting started
+
+- [Step-by-step setup](./docs/getting-started.md) — from install to verified monitoring
+- [Configuration reference](./docs/configuration.md) — all YAML and SDK options
+
+### Guides
+
+- [Error collection](./docs/guides/error-collection.md) — fingerprinting, dedup, GitHub issues
+- [Budgets & circuit breakers](./docs/guides/budgets-and-circuit-breakers.md) — 4 layers of cost protection
+- [Cost protection](./docs/guides/cost-protection.md) — the $4,868 story and how cf-monitor prevents it
+- [Worker discovery](./docs/guides/worker-discovery.md) — auto-discovery, exclude patterns
+- [Slack alerts](./docs/guides/slack-alerts.md) — alert types, dedup, webhook setup
+- [Plan detection](./docs/guides/plan-detection.md) — Free vs Paid, billing period, permissions
+- [Account usage](./docs/guides/account-usage.md) — GraphQL queries, services, limitations
+- [Gap detection](./docs/guides/gap-detection.md) — coverage monitoring
+
+### How-to
+
+- [GitHub webhooks](./docs/how-to/github-webhooks.md) — bidirectional issue sync setup
+- [Custom feature IDs](./docs/how-to/custom-feature-ids.md) — featureId, featurePrefix, features map
+- [Migrate from platform-sdk](./docs/how-to/migrate-from-platform-sdk.md) — expanded migration guide
+
+### Reference
+
+- [Troubleshooting](./docs/troubleshooting.md) — common issues with solutions
+- [Changelog](./CHANGELOG.md) — version history
+
+## 🤝 Contributing
 
 Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup and guidelines.
 
@@ -306,10 +354,17 @@ Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for development 
 git clone https://github.com/littlebearapps/cf-monitor.git
 cd cf-monitor
 npm install
-npm test          # 254 unit tests
-npm run typecheck # TypeScript strict mode
+npm test                    # 286 unit tests
+npm run test:integration    # 53 integration tests (needs CF credentials)
+npm run typecheck           # TypeScript strict mode
 ```
 
-## Licence
+## 🙏 Acknowledgements
+
+cf-monitor is a spiritual successor to [@littlebearapps/platform-consumer-sdk](https://github.com/littlebearapps/platform-sdks), which provided centralised monitoring across multiple Cloudflare accounts. The SDK's circuit breaker patterns, AE telemetry layout, and error fingerprinting algorithm were carried forward into cf-monitor's simpler per-account architecture.
+
+The project was born from a [$4,868 billing incident](./docs/guides/cost-protection.md) in January 2026, which proved that monitoring systems must be self-contained per account — not centralised.
+
+## 📄 Licence
 
 MIT — Made by [Little Bear Apps](https://littlebearapps.com)
