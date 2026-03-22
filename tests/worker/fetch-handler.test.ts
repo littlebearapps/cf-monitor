@@ -24,7 +24,7 @@ describe('handleFetch', () => {
 
 		expect(resp.status).toBe(200);
 		expect((body.workers as Record<string, unknown>).count).toBe(2);
-		expect(body.accountId).toBe('test-account-id');
+		expect(body.accountId).toBeUndefined(); // stripped for security (M6)
 	});
 
 	it('GET /errors lists fingerprints from KV', async () => {

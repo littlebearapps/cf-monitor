@@ -4,9 +4,17 @@ import type { MonitorWorkerEnv } from '../../types.js';
  * Hourly: Collect account-level metrics from Cloudflare GraphQL Analytics API.
  * Writes to Analytics Engine for time-series storage.
  */
+/** Validate account ID format to prevent GraphQL injection. */
+const ACCOUNT_ID_RE = /^[0-9a-f]{32}$/i;
+
 export async function collectAccountMetrics(env: MonitorWorkerEnv): Promise<void> {
 	if (!env.CLOUDFLARE_API_TOKEN || !env.CF_ACCOUNT_ID) {
 		console.warn('[cf-monitor:collect] No CLOUDFLARE_API_TOKEN or CF_ACCOUNT_ID configured');
+		return;
+	}
+
+	if (!ACCOUNT_ID_RE.test(env.CF_ACCOUNT_ID)) {
+		console.error('[cf-monitor:collect] Invalid CF_ACCOUNT_ID format — must be 32-char hex');
 		return;
 	}
 

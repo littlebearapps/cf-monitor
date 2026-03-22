@@ -256,6 +256,20 @@ Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
 
 **#44 — Self-monitoring**: cf-monitor now tracks its own handler execution, errors, and cron staleness. New `self-monitor.ts` module provides fail-open recording functions. All 3 handlers (tail, scheduled, fetch) are instrumented. New `GET /self-health` endpoint returns handler status, error counts, and stale cron detection (200 when healthy, 503 when stale). Staleness alerts via Slack (1/day dedup). Self-telemetry written to AE (`blob2` format: `self:{durationMs}:{1|0}`, `doubles[0]=1`). New KV prefixes: `self:v1:cron:last_run` (handler timestamps as single JSON blob), `self:v1:error:{handler}:{date}` (error counts), `self:v1:errors:count:{date}` (daily total). `CRON_HANDLER_REGISTRY` constant for staleness thresholds. Admin cron trigger: `POST /admin/cron/staleness-check`. Phase 3 (self-capture via error pipeline) deferred to future version.
 
+## v0.3.3 Security Hardening
+
+Full security audit with 9 fixes:
+
+- **Admin endpoint auth**: All `/admin/*` POST routes require `Authorization: Bearer <ADMIN_TOKEN>` (timing-safe comparison). New `ADMIN_TOKEN` env var in `MonitorWorkerEnv`.
+- **CLI command injection**: `execSync` → `execFileSync` in `secret.ts`, `deploy.ts`, `upgrade.ts`. Secret name validation: `/^[A-Z_][A-Z0-9_]*$/`.
+- **Markdown escaping**: `escapeMd()` helper sanitises table cell values in GitHub issue bodies (`github.ts`, `fetch-handler.ts`).
+- **Webhook replay protection**: `X-GitHub-Delivery` nonce stored in KV (24hr TTL). Duplicate deliveries silently dropped.
+- **GraphQL input validation**: `CF_ACCOUNT_ID` validated against `/^[0-9a-f]{32}$/i` before interpolation in `collect-account-usage.ts` and `collect-metrics.ts`.
+- **Symbol privacy**: `Symbol.for('cf-monitor:tracked')` → `Symbol('cf-monitor:tracked')` (module-private, undiscoverable by other code in isolate).
+- **Info disclosure reduction**: `/status` no longer returns `accountId`, worker `names`, `billingPeriod`, or `github.repo`.
+- **Error response hardening**: Admin endpoint errors return `'Internal error'` instead of `String(err)` (prevents stack trace leakage).
+- **New `docs/security.md`**: Public-facing security guide covering admin auth, secrets, threat model, data exposure, SDK security, npm package security.
+
 ## Bug Fixes (v0.2.2)
 
 **#46 — Gatus heartbeat unreachable**: FIXED. Scheduled handler's cron branches all returned before heartbeat code. Restructured to `if`/`else if` chain without early returns. Heartbeat now always fires with `success` status reflecting cron handler results.

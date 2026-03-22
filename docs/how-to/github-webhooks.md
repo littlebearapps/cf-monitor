@@ -17,7 +17,7 @@ This means you can manage error tracking through GitHub's normal issue workflow.
 ### Step 1: Generate a webhook secret
 
 ```bash
-npx cf-monitor secret GITHUB_WEBHOOK_SECRET
+npx cf-monitor secret set GITHUB_WEBHOOK_SECRET
 # Enter a random string (e.g. generate with: openssl rand -hex 32)
 ```
 
@@ -73,7 +73,7 @@ To unmute: remove the `cf:muted` label and reopen the issue.
 
 ## Troubleshooting
 
-**Webhook deliveries showing errors**: Check that `GITHUB_WEBHOOK_SECRET` matches exactly between GitHub and cf-monitor. Re-set with `npx cf-monitor secret GITHUB_WEBHOOK_SECRET`.
+**Webhook deliveries showing errors**: Check that `GITHUB_WEBHOOK_SECRET` matches exactly between GitHub and cf-monitor. Re-set with `npx cf-monitor secret set GITHUB_WEBHOOK_SECRET`.
 
 **Issues not syncing**: Verify the webhook is configured for "Issues" events (not "Issue comments" or other types).
 

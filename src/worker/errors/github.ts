@@ -65,17 +65,22 @@ export async function createGitHubIssue(
 	}
 }
 
+/** Escape markdown-active characters for safe interpolation in table cells. */
+function escapeMd(s: string): string {
+	return s.replace(/[|`\[\]()!*_~<>\\]/g, '\\$&');
+}
+
 function formatIssueBody(params: ErrorIssueParams): string {
 	return `## Error Details
 
 | Field | Value |
 |-------|-------|
-| **Worker** | \`${params.scriptName}\` |
-| **Outcome** | \`${params.outcome}\` |
-| **Priority** | ${params.priority} |
-| **Account** | ${params.accountName} |
+| **Worker** | \`${escapeMd(params.scriptName)}\` |
+| **Outcome** | \`${escapeMd(params.outcome)}\` |
+| **Priority** | ${escapeMd(params.priority)} |
+| **Account** | ${escapeMd(params.accountName)} |
 | **Transient** | ${params.isTransient ? 'Yes' : 'No'} |
-| **Fingerprint** | \`${params.fingerprint}\` |
+| **Fingerprint** | \`${escapeMd(params.fingerprint)}\` |
 
 ### Error
 

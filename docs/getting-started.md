@@ -157,16 +157,16 @@ GET https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/workers
 Set the GitHub token as a secret:
 
 ```bash
-npx cf-monitor secret GITHUB_TOKEN
+npx cf-monitor secret set GITHUB_TOKEN
 # Paste your token when prompted
 ```
 
-The token needs `repo` scope (classic) or `issues: write` permission (fine-grained).
+The token needs `issues: write` permission (fine-grained PAT, recommended) or `repo` scope (classic PAT). See [Security — GitHub PAT minimum scopes](./security.md#github-pat-minimum-scopes) for details.
 
 ### Slack Alerts
 
 ```bash
-npx cf-monitor secret SLACK_WEBHOOK_URL
+npx cf-monitor secret set SLACK_WEBHOOK_URL
 # Paste your Slack incoming webhook URL
 ```
 
@@ -174,14 +174,36 @@ npx cf-monitor secret SLACK_WEBHOOK_URL
 
 To sync issue close/reopen/mute events back to cf-monitor:
 
-1. Set the webhook secret: `npx cf-monitor secret GITHUB_WEBHOOK_SECRET`
+1. Set the webhook secret: `npx cf-monitor secret set GITHUB_WEBHOOK_SECRET`
 2. In your GitHub repo, go to Settings > Webhooks > Add webhook
 3. Payload URL: `https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/webhooks/github`
 4. Content type: `application/json`
 5. Secret: the same value you set above
 6. Events: select "Issues"
 
-## Step 8: Check account usage (optional)
+## Step 8: Secure admin endpoints (recommended)
+
+The cf-monitor worker has admin endpoints for manually triggering crons and controlling circuit breakers. These require an `ADMIN_TOKEN` secret:
+
+```bash
+# Generate a random token
+openssl rand -hex 32
+
+# Set it on the cf-monitor worker
+npx cf-monitor secret set ADMIN_TOKEN
+# Paste the token when prompted
+```
+
+Once set, admin requests must include the token:
+
+```bash
+curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/budget-check \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+Without `ADMIN_TOKEN`, admin endpoints return `401 Unauthorized`. See [Security — Admin endpoint authentication](./security.md#admin-endpoint-authentication) for full details.
+
+## Step 9: Check account usage (optional)
 
 After the first hourly cron runs (~up to 60 minutes after deploy), check your account-wide CF service usage:
 
@@ -194,7 +216,8 @@ This shows per-service usage (D1, KV, R2, Workers, AI, etc.) vs your plan's incl
 You can also trigger usage collection immediately:
 
 ```bash
-curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/collect-account-usage
+curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/collect-account-usage \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
 ```
 
 Or query the API:
@@ -211,4 +234,5 @@ GET https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/usage
 - [Error Collection](./guides/error-collection.md) — how fingerprinting and GitHub issues work
 - [Budgets & Circuit Breakers](./guides/budgets-and-circuit-breakers.md) — per-invocation limits and budget enforcement
 - [Cost Protection](./guides/cost-protection.md) — how cf-monitor prevents billing surprises
+- [Security](./security.md) — admin auth, secrets, threat model
 - [Troubleshooting](./troubleshooting.md) — common issues and solutions

@@ -37,12 +37,20 @@ export async function handleFetch(
 	// POST routes
 	if (request.method === 'POST') {
 		if (path === '/webhooks/github') return handleGitHubWebhook(request, env);
-		if (path.startsWith('/admin/cron/')) return handleAdminCronTrigger(path, env);
-		if (path === '/admin/cb/trip') return handleAdminCbTrip(request, env);
-		if (path === '/admin/cb/reset') return handleAdminCbReset(request, env);
-		if (path === '/admin/cb/account') return handleAdminCbAccount(request, env);
-		if (path === '/admin/test/github-dry-run') return handleGitHubDryRun(request, env);
-		if (path === '/admin/test/slack-dry-run') return handleSlackDryRun(request);
+
+		// Admin routes require Bearer token authentication
+		if (path.startsWith('/admin/')) {
+			if (!verifyAdminToken(request, env)) {
+				return Response.json({ error: 'Unauthorized' }, { status: 401 });
+			}
+			if (path.startsWith('/admin/cron/')) return handleAdminCronTrigger(path, env);
+			if (path === '/admin/cb/trip') return handleAdminCbTrip(request, env);
+			if (path === '/admin/cb/reset') return handleAdminCbReset(request, env);
+			if (path === '/admin/cb/account') return handleAdminCbAccount(request, env);
+			if (path === '/admin/test/github-dry-run') return handleGitHubDryRun(request, env);
+			if (path === '/admin/test/slack-dry-run') return handleSlackDryRun(request);
+		}
+
 		return Response.json({ error: 'Not found' }, { status: 404 });
 	}
 
@@ -100,19 +108,17 @@ async function handleSelfHealth(env: MonitorWorkerEnv): Promise<Response> {
 }
 
 async function handleStatus(env: MonitorWorkerEnv): Promise<Response> {
-	const [accountCb, globalCb, workerList, plan, billingPeriod] = await Promise.all([
+	const [accountCb, globalCb, workerList, plan] = await Promise.all([
 		env.CF_MONITOR_KV.get(KV.CB_ACCOUNT),
 		env.CF_MONITOR_KV.get(KV.CB_GLOBAL),
 		env.CF_MONITOR_KV.get(KV.WORKER_LIST),
 		getPlanOrCached(env),
-		getBillingPeriodOrCached(env),
 	]);
 
 	const workers = workerList ? JSON.parse(workerList) as string[] : [];
 
 	return Response.json({
 		account: env.ACCOUNT_NAME,
-		accountId: env.CF_ACCOUNT_ID,
 		plan,
 		healthy: !globalCb && accountCb !== 'paused',
 		circuitBreaker: {
@@ -121,10 +127,8 @@ async function handleStatus(env: MonitorWorkerEnv): Promise<Response> {
 		},
 		workers: {
 			count: workers.length,
-			names: workers,
 		},
-		billingPeriod: billingPeriod ?? undefined,
-		github: env.GITHUB_REPO ? { repo: env.GITHUB_REPO, configured: true } : { configured: false },
+		github: { configured: !!env.GITHUB_REPO },
 		slack: { configured: !!env.SLACK_WEBHOOK_URL },
 		timestamp: Date.now(),
 	});
@@ -278,10 +282,11 @@ async function handleAdminCronTrigger(path: string, env: MonitorWorkerEnv): Prom
 			durationMs: Date.now() - start,
 		});
 	} catch (err) {
+		console.error(`[cf-monitor:admin] ${cronName} error:`, err);
 		return Response.json({
 			ok: false,
 			cron: cronName,
-			error: String(err),
+			error: 'Internal error',
 			durationMs: Date.now() - start,
 		}, { status: 500 });
 	}
@@ -300,7 +305,8 @@ async function handleAdminCbTrip(request: Request, env: MonitorWorkerEnv): Promi
 		await tripFeatureCb(env.CF_MONITOR_KV, body.featureId, body.reason ?? 'admin', body.ttlSeconds ?? 3600);
 		return Response.json({ ok: true, action: 'trip', featureId: body.featureId });
 	} catch (err) {
-		return Response.json({ error: String(err) }, { status: 500 });
+		console.error('[cf-monitor:admin] CB trip error:', err);
+		return Response.json({ error: 'Internal error' }, { status: 500 });
 	}
 }
 
@@ -313,7 +319,8 @@ async function handleAdminCbReset(request: Request, env: MonitorWorkerEnv): Prom
 		await resetFeatureCb(env.CF_MONITOR_KV, body.featureId);
 		return Response.json({ ok: true, action: 'reset', featureId: body.featureId });
 	} catch (err) {
-		return Response.json({ error: String(err) }, { status: 500 });
+		console.error('[cf-monitor:admin] CB reset error:', err);
+		return Response.json({ error: 'Internal error' }, { status: 500 });
 	}
 }
 
@@ -330,7 +337,8 @@ async function handleAdminCbAccount(request: Request, env: MonitorWorkerEnv): Pr
 		}
 		return Response.json({ ok: true, action: 'account', status: body.status });
 	} catch (err) {
-		return Response.json({ error: String(err) }, { status: 500 });
+		console.error('[cf-monitor:admin] CB account error:', err);
+		return Response.json({ error: 'Internal error' }, { status: 500 });
 	}
 }
 
@@ -376,7 +384,8 @@ async function handleGitHubDryRun(request: Request, env: MonitorWorkerEnv): Prom
 
 		return Response.json({ title, body: issueBody, labels, fingerprint, priority, isTransient });
 	} catch (err) {
-		return Response.json({ error: String(err) }, { status: 500 });
+		console.error('[cf-monitor:admin] GitHub dry-run error:', err);
+		return Response.json({ error: 'Internal error' }, { status: 500 });
 	}
 }
 
@@ -394,12 +403,12 @@ function formatDryRunIssueBody(params: {
 
 | Field | Value |
 |-------|-------|
-| **Worker** | \`${params.scriptName}\` |
-| **Outcome** | \`${params.outcome}\` |
-| **Priority** | ${params.priority} |
-| **Account** | ${params.accountName} |
+| **Worker** | \`${escapeMdCell(params.scriptName)}\` |
+| **Outcome** | \`${escapeMdCell(params.outcome)}\` |
+| **Priority** | ${escapeMdCell(params.priority)} |
+| **Account** | ${escapeMdCell(params.accountName)} |
 | **Transient** | ${params.isTransient ? 'Yes' : 'No'} |
-| **Fingerprint** | \`${params.fingerprint}\` |
+| **Fingerprint** | \`${escapeMdCell(params.fingerprint)}\` |
 
 ### Error
 
@@ -462,7 +471,8 @@ async function handleSlackDryRun(request: Request): Promise<Response> {
 
 		return Response.json({ error: `Unknown type: ${type}` }, { status: 400 });
 	} catch (err) {
-		return Response.json({ error: String(err) }, { status: 500 });
+		console.error('[cf-monitor:admin] Slack dry-run error:', err);
+		return Response.json({ error: 'Internal error' }, { status: 500 });
 	}
 }
 
@@ -486,6 +496,17 @@ async function handleGitHubWebhook(request: Request, env: MonitorWorkerEnv): Pro
 	const isValid = await verifyHmacSha256(body, signature, secret);
 	if (!isValid) {
 		return Response.json({ error: 'Invalid signature' }, { status: 401 });
+	}
+
+	// Replay protection: reject duplicate delivery IDs
+	const deliveryId = request.headers.get('X-GitHub-Delivery');
+	if (deliveryId) {
+		const nonceKey = `webhook:nonce:${deliveryId}`;
+		const existing = await env.CF_MONITOR_KV.get(nonceKey);
+		if (existing) {
+			return Response.json({ ok: true, skipped: true, reason: 'Duplicate delivery' });
+		}
+		await env.CF_MONITOR_KV.put(nonceKey, '1', { expirationTtl: 86400 }); // 24hr
 	}
 
 	const event = request.headers.get('X-GitHub-Event');
@@ -534,6 +555,26 @@ async function handleGitHubWebhook(request: Request, env: MonitorWorkerEnv): Pro
 		console.error(`[cf-monitor:webhook] Error processing ${action}: ${err}`);
 		return Response.json({ error: 'Processing failed' }, { status: 500 });
 	}
+}
+
+/** Escape markdown-active characters for safe table cell interpolation. */
+function escapeMdCell(s: string): string {
+	return s.replace(/[|`\[\]()!*_~<>\\]/g, '\\$&');
+}
+
+/** Verify admin token from Authorization: Bearer header. */
+function verifyAdminToken(request: Request, env: MonitorWorkerEnv): boolean {
+	if (!env.ADMIN_TOKEN) return false;
+	const header = request.headers.get('Authorization');
+	if (!header) return false;
+	const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+	if (token.length !== env.ADMIN_TOKEN.length) return false;
+	// Timing-safe comparison
+	let result = 0;
+	for (let i = 0; i < token.length; i++) {
+		result |= token.charCodeAt(i) ^ env.ADMIN_TOKEN.charCodeAt(i);
+	}
+	return result === 0;
 }
 
 /** Verify HMAC-SHA256 signature from GitHub webhook. */

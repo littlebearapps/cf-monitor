@@ -2,6 +2,32 @@
 
 All notable changes to cf-monitor are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
+## [0.3.3] - 2026-03-22
+
+### Security
+- Admin endpoint authentication: all `/admin/*` POST routes require `Authorization: Bearer <ADMIN_TOKEN>` with timing-safe comparison (#62)
+- CLI command injection: `execSync` replaced with `execFileSync` in `secret.ts`, `deploy.ts`, `upgrade.ts`; secret name validation added (#63)
+- Markdown escaping: `escapeMd()` helper sanitises GitHub issue table cells, preventing injection via crafted error messages (#64)
+- GraphQL input validation: `CF_ACCOUNT_ID` validated against `/^[0-9a-f]{32}$/i` before query interpolation (#65)
+- Symbol privacy: `Symbol.for()` changed to `Symbol()` for module-private tracking metadata (#67)
+- Info disclosure reduction: `/status` endpoint no longer returns `accountId`, worker `names`, `billingPeriod`, or `github.repo` (#68)
+- Webhook replay protection: `X-GitHub-Delivery` nonce stored in KV (24hr TTL), duplicate deliveries silently dropped (#69)
+- Error response hardening: admin endpoints return generic `'Internal error'` instead of `String(err)` (#70)
+- KV TOCTOU race in budget accumulation documented as known limitation (#66)
+
+### Added
+- `docs/security.md` — comprehensive security guide: admin auth, secrets management, threat model, data exposure, SDK security, npm package security
+- `ADMIN_TOKEN` environment variable for admin endpoint authentication
+- New KV prefix: `webhook:nonce:` for webhook replay protection
+
+### Changed
+- CLI `secret` subcommand syntax fixed across all documentation (`secret` → `secret set`)
+- All admin endpoint curl examples in docs now include `Authorization: Bearer` header
+- `docs/getting-started.md` — added Step 8 (admin endpoint security), GitHub PAT scope guidance
+- `docs/troubleshooting.md` — added "Admin endpoints returning 401" and "Self-monitoring shows stale crons" sections
+- `docs/configuration.md` — expanded secrets section with all 6 secrets and minimum scopes
+- `README.md` — added Security doc link, ADMIN_TOKEN requirement, admin auth notes on endpoint table
+
 ## [0.3.2] - 2026-03-22
 
 ### Added
@@ -123,6 +149,7 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
+[0.3.3]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/littlebearapps/cf-monitor/compare/v0.2.2...v0.3.0

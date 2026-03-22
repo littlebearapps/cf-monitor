@@ -1,5 +1,5 @@
 import pc from 'picocolors';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
 interface UpgradeOptions {
@@ -47,7 +47,7 @@ export async function upgradeCommand(options: UpgradeOptions): Promise<void> {
 
 		// Step 3: Deploy
 		console.log('\n  Deploying updated worker...');
-		execSync(`npx wrangler deploy -c ${configPath}`, { stdio: 'inherit' });
+		execFileSync('npx', ['wrangler', 'deploy', '-c', configPath], { stdio: 'inherit' });
 
 		// Step 4: Health check
 		console.log('\n  Verifying deployment...');

@@ -14,7 +14,7 @@ function mockEnv(overrides?: Partial<MonitorWorkerEnv>): MonitorWorkerEnv {
 			getWithMetadata: vi.fn(async () => ({ value: null, metadata: null, cacheStatus: null })),
 		} as unknown as KVNamespace,
 		CF_MONITOR_AE: { writeDataPoint: vi.fn() } as unknown as AnalyticsEngineDataset,
-		CF_ACCOUNT_ID: 'test-account-id',
+		CF_ACCOUNT_ID: 'aabbccdd11223344aabbccdd11223344',
 		ACCOUNT_NAME: 'test-account',
 		CLOUDFLARE_API_TOKEN: 'test-token',
 		...overrides,

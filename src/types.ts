@@ -174,6 +174,7 @@ export interface MonitorWorkerEnv {
 	CLOUDFLARE_API_TOKEN?: string;
 	GATUS_HEARTBEAT_URL?: string;
 	GATUS_TOKEN?: string;
+	ADMIN_TOKEN?: string;
 	AI?: Ai;
 }
 
@@ -301,7 +302,7 @@ export interface CfMonitorConfig {
 // =============================================================================
 
 /** Marker symbol for tracked environments. */
-export const TRACKED_ENV_SYMBOL = Symbol.for('cf-monitor:tracked');
+export const TRACKED_ENV_SYMBOL = Symbol('cf-monitor:tracked');
 
 /** A worker env that has been wrapped with metric-tracking proxies. */
 export type TrackedEnv<Env extends object = object> = Env & {
