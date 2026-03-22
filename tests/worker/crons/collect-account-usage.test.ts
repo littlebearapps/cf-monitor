@@ -42,17 +42,13 @@ describe('collectAccountUsage', () => {
 			// Core services query
 			.mockResolvedValueOnce(graphqlResponse({
 				workersInvocationsAdaptive: [{ sum: { requests: 1000, wallTime: 5000 } }],
-				d1AnalyticsAdaptive: [{ sum: { rowsRead: 50000, rowsWritten: 1000, readQueries: 100, writeQueries: 10 } }],
+				d1AnalyticsAdaptiveGroups: [{ sum: { rowsRead: 50000, rowsWritten: 1000 } }],
 				kvOperationsAdaptiveGroups: [{ sum: { readOperations: 3000, writeOperations: 100, listOperations: 5, deleteOperations: 2 } }],
 				r2OperationsAdaptiveGroups: [],
 			}))
-			// Extra services query
+			// Extra services query (Durable Objects only)
 			.mockResolvedValueOnce(graphqlResponse({
-				aiGatewayLogsAdaptiveGroups: [{ count: 50 }],
-				durableObjectsInvocationsAdaptiveGroups: [],
-				vectorizeQueriesAdaptiveGroups: [],
-				queueConsumerMetricsAdaptiveGroups: [],
-				queueProducerMetricsAdaptiveGroups: [],
+				durableObjectsInvocationsAdaptiveGroups: [{ sum: { requests: 200 } }],
 			}));
 
 		await collectAccountUsage(env);
@@ -70,7 +66,7 @@ describe('collectAccountUsage', () => {
 		expect(snapshot.services.workers).toEqual({ requests: 1000, cpuMs: 5000 });
 		expect(snapshot.services.d1).toEqual({ rowsRead: 50000, rowsWritten: 1000 });
 		expect(snapshot.services.kv).toEqual({ reads: 3000, writes: 100, deletes: 2, lists: 5 });
-		expect(snapshot.services.aiGateway).toEqual({ requests: 50 });
+		expect(snapshot.services.durableObjects).toEqual({ requests: 200, storedBytes: 0 });
 	});
 
 	it('handles partial GraphQL failures gracefully', async () => {

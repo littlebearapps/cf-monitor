@@ -8,10 +8,10 @@ const USAGE_DISCLAIMER = 'Approximate — from CF GraphQL Analytics API. Not aut
  * Hourly: Collect account-wide usage per CF service via GraphQL Analytics API.
  * Stores a daily snapshot in KV for the /usage endpoint.
  *
- * Services queried: D1, KV, R2, Workers, Workers AI, AI Gateway,
- * Durable Objects, Vectorize, Queues.
+ * Services with GraphQL datasets: Workers, D1, KV, R2, Durable Objects.
  *
- * NOTE: Workflows and Hyperdrive are not yet available in GraphQL Analytics.
+ * NOT available in GraphQL: AI Gateway, Vectorize, Queues, Workflows, Hyperdrive.
+ * These services use REST APIs or dashboard-only metrics — may be added later.
  */
 export async function collectAccountUsage(env: MonitorWorkerEnv): Promise<void> {
 	if (!env.CLOUDFLARE_API_TOKEN || !env.CF_ACCOUNT_ID) {
@@ -72,11 +72,11 @@ async function queryCoreServices(
       ) {
         sum { requests wallTime }
       }
-      d1AnalyticsAdaptive(
+      d1AnalyticsAdaptiveGroups(
         filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
         limit: 100
       ) {
-        sum { readQueries writeQueries rowsRead rowsWritten }
+        sum { rowsRead rowsWritten }
       }
       kvOperationsAdaptiveGroups(
         filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
@@ -99,7 +99,10 @@ async function queryCoreServices(
 	if (!result) return {};
 
 	const account = result.data?.viewer?.accounts?.[0];
-	if (!account) return {};
+	if (!account) {
+		console.warn('[cf-monitor:usage] No account data in core GraphQL response');
+		return {};
+	}
 
 	const services: ServiceUsageSnapshot['services'] = {};
 
@@ -119,7 +122,7 @@ async function queryCoreServices(
 
 	// D1
 	try {
-		const d1 = account.d1AnalyticsAdaptive;
+		const d1 = account.d1AnalyticsAdaptiveGroups;
 		if (d1?.length) {
 			let rowsRead = 0;
 			let rowsWritten = 0;
@@ -185,38 +188,17 @@ async function queryExtraServices(
 	const startStr = start.toISOString();
 	const endStr = end.toISOString();
 
+	// Only Durable Objects has a GraphQL Analytics dataset.
+	// AI Gateway, Vectorize, and Queues do NOT have GraphQL datasets —
+	// they use REST APIs or dashboard-only metrics.
 	const query = `{
   viewer {
     accounts(filter: { accountTag: "${env.CF_ACCOUNT_ID}" }) {
-      aiGatewayLogsAdaptiveGroups(
-        filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
-        limit: 100
-      ) {
-        count
-      }
       durableObjectsInvocationsAdaptiveGroups(
         filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
         limit: 100
       ) {
         sum { requests }
-      }
-      vectorizeQueriesAdaptiveGroups(
-        filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
-        limit: 100
-      ) {
-        sum { queryCount }
-      }
-      queueConsumerMetricsAdaptiveGroups(
-        filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
-        limit: 100
-      ) {
-        sum { messagesAcknowledged }
-      }
-      queueProducerMetricsAdaptiveGroups(
-        filter: { datetime_geq: "${startStr}", datetime_lt: "${endStr}" }
-        limit: 100
-      ) {
-        sum { messagesProduced }
       }
     }
   }
@@ -230,20 +212,6 @@ async function queryExtraServices(
 
 	const services: ServiceUsageSnapshot['services'] = {};
 
-	// AI Gateway
-	try {
-		const aiGw = account.aiGatewayLogsAdaptiveGroups;
-		if (aiGw?.length) {
-			let totalRequests = 0;
-			for (const entry of aiGw) {
-				totalRequests += entry.count ?? 0;
-			}
-			if (totalRequests > 0) {
-				services.aiGateway = { requests: totalRequests };
-			}
-		}
-	} catch { /* skip */ }
-
 	// Durable Objects
 	try {
 		const doData = account.durableObjectsInvocationsAdaptiveGroups;
@@ -255,41 +223,6 @@ async function queryExtraServices(
 			if (totalRequests > 0) {
 				services.durableObjects = { requests: totalRequests, storedBytes: 0 };
 			}
-		}
-	} catch { /* skip */ }
-
-	// Vectorize
-	try {
-		const vectorize = account.vectorizeQueriesAdaptiveGroups;
-		if (vectorize?.length) {
-			let totalQueries = 0;
-			for (const entry of vectorize) {
-				totalQueries += entry.sum?.queryCount ?? 0;
-			}
-			if (totalQueries > 0) {
-				services.vectorize = { queries: totalQueries };
-			}
-		}
-	} catch { /* skip */ }
-
-	// Queues (consumer + producer)
-	try {
-		let produced = 0;
-		let consumed = 0;
-		const qConsumer = account.queueConsumerMetricsAdaptiveGroups;
-		if (qConsumer?.length) {
-			for (const entry of qConsumer) {
-				consumed += entry.sum?.messagesAcknowledged ?? 0;
-			}
-		}
-		const qProducer = account.queueProducerMetricsAdaptiveGroups;
-		if (qProducer?.length) {
-			for (const entry of qProducer) {
-				produced += entry.sum?.messagesProduced ?? 0;
-			}
-		}
-		if (produced > 0 || consumed > 0) {
-			services.queues = { produced, consumed };
 		}
 	} catch { /* skip */ }
 
