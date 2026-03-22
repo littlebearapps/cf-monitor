@@ -81,11 +81,30 @@ Or push from config to KV:
 npx cf-monitor config sync
 ```
 
-If not configured, cf-monitor auto-seeds defaults from `PAID_PLAN_DAILY_BUDGETS` (80% of paid plan allowance / 30 days). The auto-seeding runs during the first hourly budget check when no `budget:config:*` keys exist in KV. It discovers active features from usage data, writes per-feature configs with 25-hour TTL, and creates an `__account__` fallback that applies to any feature without its own config. A seed flag (24-hour TTL) prevents re-seeding every hour.
+### Auto-seeding (plan-aware)
+
+If not configured, cf-monitor auto-seeds defaults based on your detected CF plan:
+
+- **Workers Paid**: ~80% of monthly included / 30 days (e.g. `d1_writes: 1,333,333/day`)
+- **Workers Free**: Much lower limits (e.g. `d1_writes: 10,000/day`)
+
+Plan detection uses the CF Subscriptions API. If your token lacks `Account Settings: Read` permission, it defaults to Paid plan limits (safe, conservative).
+
+The auto-seeding runs during the first hourly budget check when no `budget:config:*` keys exist in KV. It discovers active features from usage data, writes per-feature configs with 25-hour TTL, and creates an `__account__` fallback that applies to any feature without its own config. A seed flag (24-hour TTL) prevents re-seeding every hour.
+
+If you run `npx cf-monitor config sync` with your own budgets, they take permanent precedence over auto-seeded defaults.
 
 ## Monthly budgets (Layer 2b)
 
-Monthly budgets work identically to daily but use a `budget:usage:monthly:{feature}:{month}` counter and `budget:config:monthly:{feature}` KV keys. Monthly alerts are deduplicated for 24 hours.
+Monthly budgets work identically to daily but use a `budget:usage:monthly:{feature}:{key}` counter and `budget:config:monthly:{feature}` KV keys. Monthly alerts are deduplicated for 24 hours.
+
+### Billing period alignment
+
+Monthly budgets track usage against your actual CF billing period (e.g. 2nd to 2nd), not calendar months. This prevents the ~2 day misalignment at period boundaries that could cause under- or over-counting.
+
+The billing period is automatically detected from the CF Subscriptions API and cached in KV for 32 days. Monthly KV keys use the billing period start date (`YYYY-MM-DD` format, e.g. `2026-03-02`) instead of calendar month (`YYYY-MM`).
+
+If billing period detection is unavailable (token lacks permissions), monthly budgets fall back to calendar month boundaries (previous behaviour). During the transition from v0.2.x, both key formats are checked and summed — no data is lost.
 
 ## Circuit breakers (Layer 3)
 

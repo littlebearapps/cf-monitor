@@ -1,7 +1,9 @@
-import { KV, PAID_PLAN_DAILY_BUDGETS } from '../../constants.js';
+import { KV } from '../../constants.js';
 import type { MonitorWorkerEnv } from '../../types.js';
 import { tripFeatureCb } from '../../sdk/circuit-breaker.js';
 import { sendSlackAlert, formatBudgetWarning } from '../alerts/slack.js';
+import { getPlanOrCached, getBillingPeriodOrCached, getBillingPeriodKey } from '../account/subscriptions.js';
+import { getDailyBudgetsForPlan } from '../account/plan-allowances.js';
 
 /** Budget config prefix for monthly limits. */
 const BUDGET_CONFIG_MONTHLY = 'budget:config:monthly:';
@@ -58,9 +60,13 @@ async function autoSeedBudgets(env: MonitorWorkerEnv): Promise<void> {
 	const seeded = await env.CF_MONITOR_KV.get(SEED_FLAG);
 	if (seeded) return;
 
-	console.log('[cf-monitor:budget] No budget configs found. Auto-seeding defaults.');
+	// Detect plan to select correct budget defaults (#53)
+	const plan = await getPlanOrCached(env);
+	const budgetDefaults = getDailyBudgetsForPlan(plan);
 
-	const defaults = JSON.stringify(PAID_PLAN_DAILY_BUDGETS);
+	console.log(`[cf-monitor:budget] No budget configs found. Auto-seeding ${plan} plan defaults.`);
+
+	const defaults = JSON.stringify(budgetDefaults);
 
 	// Discover active features from usage keys
 	const usageList = await env.CF_MONITOR_KV.list({ prefix: KV.BUDGET_DAILY, limit: 200 });
@@ -171,13 +177,18 @@ async function checkFeatureBudget(
 // =============================================================================
 
 async function checkMonthlyBudgets(env: MonitorWorkerEnv): Promise<void> {
-	const configList = await env.CF_MONITOR_KV.list({ prefix: BUDGET_CONFIG_MONTHLY, limit: 200 });
-	const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+	const [configList, billingPeriod] = await Promise.all([
+		env.CF_MONITOR_KV.list({ prefix: BUDGET_CONFIG_MONTHLY, limit: 200 }),
+		getBillingPeriodOrCached(env),
+	]);
+
+	const periodKey = getBillingPeriodKey(billingPeriod); // e.g. "2026-03-02" or null
+	const calendarMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-03"
 
 	for (const key of configList.keys) {
 		const featureId = key.name.replace(BUDGET_CONFIG_MONTHLY, '');
 		try {
-			await checkMonthlyFeatureBudget(env, featureId, month);
+			await checkMonthlyFeatureBudget(env, featureId, periodKey, calendarMonth);
 		} catch (err) {
 			console.error(`[cf-monitor:budget] Monthly check failed for ${featureId}: ${err}`);
 		}
@@ -187,17 +198,44 @@ async function checkMonthlyBudgets(env: MonitorWorkerEnv): Promise<void> {
 async function checkMonthlyFeatureBudget(
 	env: MonitorWorkerEnv,
 	featureId: string,
-	month: string
+	periodKey: string | null,
+	calendarMonth: string
 ): Promise<void> {
-	const [configRaw, usageRaw] = await Promise.all([
+	// Fetch config + usage from both key formats (transition safety for #54)
+	const fetches: Promise<string | null>[] = [
 		env.CF_MONITOR_KV.get(`${BUDGET_CONFIG_MONTHLY}${featureId}`),
-		env.CF_MONITOR_KV.get(`${KV.BUDGET_MONTHLY}${featureId}:${month}`),
-	]);
+	];
+
+	// Primary key: billing-period-aware if available, else calendar month
+	const primaryKey = periodKey
+		? `${KV.BUDGET_MONTHLY}${featureId}:${periodKey}`
+		: `${KV.BUDGET_MONTHLY}${featureId}:${calendarMonth}`;
+	fetches.push(env.CF_MONITOR_KV.get(primaryKey));
+
+	// Also check the other format during transition
+	if (periodKey) {
+		fetches.push(env.CF_MONITOR_KV.get(`${KV.BUDGET_MONTHLY}${featureId}:${calendarMonth}`));
+	}
+
+	const results = await Promise.all(fetches);
+	const configRaw = results[0];
+	const primaryUsageRaw = results[1];
+	const fallbackUsageRaw = results[2] ?? null;
 
 	if (!configRaw) return;
 
 	const config = JSON.parse(configRaw) as Record<string, number>;
-	const usage = usageRaw ? JSON.parse(usageRaw) as Record<string, number> : {};
+
+	// Merge usage from both key formats during billing period transition
+	const primaryUsage = primaryUsageRaw ? JSON.parse(primaryUsageRaw) as Record<string, number> : {};
+	const fallbackUsage = fallbackUsageRaw ? JSON.parse(fallbackUsageRaw) as Record<string, number> : {};
+	const usage: Record<string, number> = { ...primaryUsage };
+	for (const [k, v] of Object.entries(fallbackUsage)) {
+		usage[k] = (usage[k] ?? 0) + v;
+	}
+
+	// Dedup key uses billing period or calendar month
+	const dedupSuffix = periodKey ?? calendarMonth;
 
 	for (const [metric, limit] of Object.entries(config)) {
 		if (limit <= 0) continue;
@@ -205,34 +243,31 @@ async function checkMonthlyFeatureBudget(
 		const current = usage[metric] ?? 0;
 		const pct = (current / limit) * 100;
 
-		// Trip circuit breaker at 100%
 		if (pct >= 100) {
 			await tripFeatureCb(env.CF_MONITOR_KV, featureId, `monthly ${metric} budget exceeded (${current}/${limit})`);
 			await sendSlackAlert(
 				env,
-				`monthly:cb:${featureId}:${month}`,
-				86400, // 24hr dedup for monthly alerts
-				formatBudgetWarning(env.ACCOUNT_NAME, featureId, `${metric} (monthly)`, current, limit, pct)
-			);
-			continue;
-		}
-
-		// Warning at 90%
-		if (pct >= 90) {
-			await sendSlackAlert(
-				env,
-				`monthly:critical:${featureId}:${metric}:${month}`,
+				`monthly:cb:${featureId}:${dedupSuffix}`,
 				86400,
 				formatBudgetWarning(env.ACCOUNT_NAME, featureId, `${metric} (monthly)`, current, limit, pct)
 			);
 			continue;
 		}
 
-		// Warning at 70%
+		if (pct >= 90) {
+			await sendSlackAlert(
+				env,
+				`monthly:critical:${featureId}:${metric}:${dedupSuffix}`,
+				86400,
+				formatBudgetWarning(env.ACCOUNT_NAME, featureId, `${metric} (monthly)`, current, limit, pct)
+			);
+			continue;
+		}
+
 		if (pct >= 70) {
 			await sendSlackAlert(
 				env,
-				`monthly:warning:${featureId}:${metric}:${month}`,
+				`monthly:warning:${featureId}:${metric}:${dedupSuffix}`,
 				86400,
 				formatBudgetWarning(env.ACCOUNT_NAME, featureId, `${metric} (monthly)`, current, limit, pct)
 			);

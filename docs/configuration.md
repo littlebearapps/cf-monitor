@@ -46,6 +46,26 @@ monitoring:
   spike_threshold: 2.0                      # Cost spike multiplier (>1.5, default 2.0)
 ```
 
+### Plan detection (automatic)
+
+cf-monitor automatically detects your Workers plan (Free or Paid) via the Cloudflare Subscriptions API. This is used to:
+
+- Select correct default budgets when auto-seeding (Free plan limits are ~10x lower than Paid)
+- Show plan allowances in `GET /usage` and `npx cf-monitor usage`
+- Calculate "% of plan used" in the usage dashboard
+
+**No configuration needed.** If your API token includes `Account Settings: Read` permission (`#billing:read`), plan detection works automatically. If not, cf-monitor defaults to Workers Paid plan budgets (conservative — won't under-protect).
+
+The detected plan is cached in KV for 24 hours (`config:plan` key).
+
+### Billing period (automatic)
+
+When plan detection succeeds, cf-monitor also caches the billing period (start/end dates). Monthly budget tracking uses the billing period start date instead of calendar month boundaries, so budget enforcement aligns with your actual CF invoice.
+
+For example, if your billing period runs from the 2nd to the 2nd, monthly budget KV keys use `YYYY-MM-DD` format (e.g. `2026-03-02`) instead of `YYYY-MM`.
+
+Cached in KV for 32 days (`config:billing_period` key). Falls back to calendar month (`YYYY-MM`) if billing period is unavailable.
+
 ### budgets (optional)
 
 ```yaml

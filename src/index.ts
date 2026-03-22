@@ -19,4 +19,13 @@
 
 export { monitor } from './sdk/monitor.js';
 export { CircuitBreakerError, RequestBudgetExceededError } from './types.js';
-export type { MonitorConfig, MetricsAccumulator, RequestLimits, BudgetOverrides } from './types.js';
+export type {
+	MonitorConfig,
+	MetricsAccumulator,
+	RequestLimits,
+	BudgetOverrides,
+	AccountPlan,
+	BillingPeriod,
+	PlanAllowances,
+	ServiceUsageSnapshot,
+} from './types.js';

@@ -38,14 +38,14 @@
 | **Language** | TypeScript |
 | **Runtime** | Cloudflare Workers |
 | **npm** | `@littlebearapps/cf-monitor` |
-| **Status** | v0.2.2 — production-tested, published to npm |
+| **Status** | v0.3.0 — production-tested, published to npm |
 | **Repository** | https://github.com/littlebearapps/cf-monitor |
 | **Licence** | MIT |
 | **Issues** | https://github.com/littlebearapps/cf-monitor/issues |
 
 **Quick Commands**:
 ```bash
-npm test                    # Run unit tests (231 tests, vitest)
+npm test                    # Run unit tests (254 tests, vitest)
 npm run test:integration    # Run integration tests (53 tests across 10 files, needs CF credentials)
 npm run typecheck           # TypeScript check (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
@@ -82,8 +82,9 @@ cf-monitor/
 │   │   ├── index.ts          # Export: { fetch, scheduled, tail }
 │   │   ├── tail-handler.ts   # Error capture → fingerprint → GitHub issue
 │   │   ├── scheduled-handler.ts # Cron multiplexer
-│   │   ├── fetch-handler.ts  # API: /status, /errors, /budgets, /workers + admin cron triggers + GitHub webhooks
-│   │   ├── crons/            # Cron handlers (metrics, budgets, gaps, discovery)
+│   │   ├── fetch-handler.ts  # API: /status, /errors, /budgets, /workers, /plan, /usage + admin cron triggers + GitHub webhooks
+│   │   ├── account/          # Account-level concerns (plan detection, billing period, allowances)
+│   │   ├── crons/            # Cron handlers (metrics, usage collection, budgets, gaps, discovery)
 │   │   ├── errors/           # Fingerprinting, patterns, GitHub issue CRUD
 │   │   ├── alerts/           # Slack alerts with dedup
 │   │   └── optional/         # AI features (opt-in, not yet implemented)
@@ -130,9 +131,9 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 |---------|----------|---------|
 | `tail()` | Real-time | Error capture from all tailed workers |
 | `scheduled()` | `*/15 * * * *` | Gap detection, cost spike detection |
-| `scheduled()` | `0 * * * *` | CF GraphQL metrics, budget enforcement (daily+monthly), synthetic CB health |
+| `scheduled()` | `0 * * * *` | CF GraphQL metrics, account usage collection, budget enforcement (daily+monthly), synthetic CB health |
 | `scheduled()` | `0 0 * * *` | Daily rollup + warning digest, worker discovery |
-| `fetch()` | On-demand | API: /status, /errors, /budgets, /workers, /_health, /admin/cron/*, /webhooks/github |
+| `fetch()` | On-demand | API: /status, /errors, /budgets, /workers, /plan, /usage, /_health, /admin/cron/*, /webhooks/github |
 
 ### Storage Model
 
@@ -157,6 +158,9 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | `warn:digest:` | P4 warning daily digest batch |
 | `workers:` | Auto-discovered worker registry |
 | `workers:{name}:last_seen` | SDK heartbeat timestamp |
+| `config:plan` | Detected CF plan (free/paid), 24hr TTL |
+| `config:billing_period` | Billing period JSON, 32d TTL |
+| `usage:account:{date}` | Daily per-service usage snapshot, 32d TTL |
 
 ---
 
@@ -167,12 +171,15 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | Public API | `src/index.ts` — exports `monitor()` |
 | Worker wrapper | `src/sdk/monitor.ts` — the main SDK entry point |
 | Binding proxies | `src/sdk/proxy.ts` — D1, KV, R2, AI, Vectorize, Queue, DO, Workflow tracking |
-| Types | `src/types.ts` — MonitorConfig, MetricsAccumulator, CircuitBreakerError |
+| Types | `src/types.ts` — MonitorConfig, MetricsAccumulator, CircuitBreakerError, AccountPlan, BillingPeriod |
 | Constants | `src/constants.ts` — AE field mapping, KV prefixes, pricing |
 | Monitor worker | `src/worker/index.ts` — single worker entry point |
 | Error capture | `src/worker/tail-handler.ts` — tail event processing |
 | GitHub issues | `src/worker/errors/github.ts` — PAT-based issue creation |
-| Budget enforcement | `src/worker/crons/budget-check.ts` — hourly CB enforcement |
+| Budget enforcement | `src/worker/crons/budget-check.ts` — plan-aware hourly CB enforcement |
+| Account detection | `src/worker/account/subscriptions.ts` — plan detection, billing period, KV-cached |
+| Plan allowances | `src/worker/account/plan-allowances.ts` — free/paid allowance tables |
+| Usage collection | `src/worker/crons/collect-account-usage.ts` — hourly GraphQL for 9 services |
 | CLI entry | `src/cli/index.ts` — commander setup |
 
 ---
@@ -223,6 +230,14 @@ Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
 **#30 — Feature ID format**: FIXED. Added `featureId` (single ID for all routes) and `featurePrefix` (replaces worker name in auto-generated IDs). Precedence: `featureId` → `features` map → auto-generate with `featurePrefix ?? workerName`.
 
 **#26 — Integration test suite**: IMPLEMENTED. 53 tests across 10 files covering all features. Deploys real workers with `test-` prefix to Platform CF account. CI: runs on push to main + workflow_dispatch.
+
+## v0.3.0 Features
+
+**#53 — Plan detection**: Auto-detects Workers Free vs Paid via CF Subscriptions API (`GET /accounts/{id}/subscriptions`). Plan cached in KV (24hr TTL). Budget auto-seeding selects correct defaults per plan. Falls back to "paid" (conservative) if token lacks `#billing:read`. New `GET /plan` endpoint. CLI `status` shows plan type.
+
+**#54 — Billing-period-aware budgets**: Monthly KV keys transition from `YYYY-MM` to `YYYY-MM-DD` (billing period start). Billing period cached in KV (32d TTL). `checkMonthlyBudgets()` checks both old and new key formats during transition (sums usage). SDK-side module-level cache (1hr TTL per isolate) avoids per-invocation KV reads. `GET /budgets` includes `billingPeriod`. Falls back to calendar month if unavailable.
+
+**#55 — Account-wide usage collection**: Hourly `collect-account-usage` cron queries CF GraphQL for 9 services (D1, KV, R2, Workers, AI Gateway, DO, Vectorize, Queues). Daily snapshots stored in KV (`usage:account:{date}`, 32d TTL). New `GET /usage` endpoint with plan context + disclaimer. New `npx cf-monitor usage` CLI. Uses existing `CLOUDFLARE_API_TOKEN` — no new token needed. Data is approximate per CF documentation.
 
 ## Bug Fixes (v0.2.2)
 

@@ -34,6 +34,16 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
 		const healthIcon = status.healthy ? pc.green('healthy') : pc.red('unhealthy');
 		console.log(`  Account: ${pc.cyan(status.account)} (${healthIcon})`);
 		console.log(`  Account ID: ${status.accountId}`);
+		if (status.plan) {
+			const planLabel = status.plan === 'paid' ? pc.green('Workers Paid') : pc.yellow('Workers Free');
+			console.log(`  Plan: ${planLabel}`);
+		}
+		if (status.billingPeriod) {
+			const start = status.billingPeriod.start.slice(0, 10);
+			const end = status.billingPeriod.end.slice(0, 10);
+			const daysLeft = Math.max(0, Math.ceil((new Date(status.billingPeriod.end).getTime() - Date.now()) / 86_400_000));
+			console.log(`  Billing period: ${start} to ${end} (${daysLeft} days remaining)`);
+		}
 		console.log('');
 
 		// Circuit breakers
@@ -92,6 +102,7 @@ function resolveWorkerUrl(): string | null {
 interface StatusResponse {
 	account: string;
 	accountId: string;
+	plan?: string;
 	healthy: boolean;
 	circuitBreaker?: {
 		global: string;
@@ -100,6 +111,11 @@ interface StatusResponse {
 	workers?: {
 		count: number;
 		names: string[];
+	};
+	billingPeriod?: {
+		start: string;
+		end: string;
+		dayOfMonth: number;
 	};
 	github?: {
 		configured: boolean;

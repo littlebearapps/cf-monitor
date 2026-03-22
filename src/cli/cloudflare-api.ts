@@ -187,24 +187,46 @@ export async function listKVKeys(
 }
 
 /**
- * Detect the account plan type.
+ * Detect the account plan type via Subscriptions API (#53).
+ * Returns 'paid', 'free', or 'unknown' if API unavailable.
  */
 export async function getAccountPlan(accountId: string, apiToken: string): Promise<string> {
 	try {
-		const response = await fetch(
-			`${CF_API}/accounts/${accountId}`,
-			{ headers: headers(apiToken) }
-		);
-
-		if (!response.ok) return 'unknown';
-
-		const data = await response.json() as {
-			result: { settings?: { default_usage_model?: string } };
-		};
-
-		// Workers Paid plan typically shows "bundled" or similar
-		return data.result?.settings?.default_usage_model ?? 'paid';
+		const subs = await getAccountSubscriptions(accountId, apiToken);
+		if (!subs) return 'unknown';
+		for (const sub of subs) {
+			if (sub.rate_plan?.id === 'workers_paid' && sub.rate_plan?.scope === 'account') {
+				return 'paid';
+			}
+		}
+		return 'free';
 	} catch {
 		return 'unknown';
 	}
+}
+
+interface SubscriptionResult {
+	rate_plan: { id: string; public_name: string; scope: string };
+	current_period_start: string;
+	current_period_end: string;
+}
+
+/**
+ * Fetch account subscriptions from CF API.
+ * Returns null if token lacks #billing:read permission.
+ */
+export async function getAccountSubscriptions(
+	accountId: string,
+	apiToken: string
+): Promise<SubscriptionResult[] | null> {
+	const response = await fetch(
+		`${CF_API}/accounts/${accountId}/subscriptions`,
+		{ headers: headers(apiToken) }
+	);
+
+	if (response.status === 403) return null;
+	if (!response.ok) return null;
+
+	const data = await response.json() as { result: SubscriptionResult[]; success: boolean };
+	return data.success ? data.result ?? [] : null;
 }

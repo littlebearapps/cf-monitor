@@ -11,6 +11,9 @@ import { tripFeatureCb, resetFeatureCb, setAccountCbStatus } from '../sdk/circui
 import { computeFingerprint } from './errors/fingerprint.js';
 import { matchTransientPattern } from './errors/patterns.js';
 import { formatBudgetWarning, formatErrorAlert } from './alerts/slack.js';
+import { collectAccountUsage } from './crons/collect-account-usage.js';
+import { getPlanOrCached, getBillingPeriodOrCached } from './account/subscriptions.js';
+import { getAllowancesForPlan } from './account/plan-allowances.js';
 
 /**
  * API endpoints for the cf-monitor worker.
@@ -52,6 +55,8 @@ export async function handleFetch(
 		if (path === '/errors') return handleErrors(env);
 		if (path === '/budgets') return handleBudgets(env);
 		if (path === '/workers') return handleWorkers(env);
+		if (path === '/plan') return handlePlan(env);
+		if (path === '/usage') return handleUsage(env);
 
 		return Response.json({ error: 'Not found' }, { status: 404 });
 	} catch (err) {
@@ -73,10 +78,12 @@ async function handleHealth(env: MonitorWorkerEnv): Promise<Response> {
 }
 
 async function handleStatus(env: MonitorWorkerEnv): Promise<Response> {
-	const [accountCb, globalCb, workerList] = await Promise.all([
+	const [accountCb, globalCb, workerList, plan, billingPeriod] = await Promise.all([
 		env.CF_MONITOR_KV.get(KV.CB_ACCOUNT),
 		env.CF_MONITOR_KV.get(KV.CB_GLOBAL),
 		env.CF_MONITOR_KV.get(KV.WORKER_LIST),
+		getPlanOrCached(env),
+		getBillingPeriodOrCached(env),
 	]);
 
 	const workers = workerList ? JSON.parse(workerList) as string[] : [];
@@ -84,6 +91,7 @@ async function handleStatus(env: MonitorWorkerEnv): Promise<Response> {
 	return Response.json({
 		account: env.ACCOUNT_NAME,
 		accountId: env.CF_ACCOUNT_ID,
+		plan,
 		healthy: !globalCb && accountCb !== 'paused',
 		circuitBreaker: {
 			global: globalCb === 'true' ? 'active' : 'inactive',
@@ -93,6 +101,7 @@ async function handleStatus(env: MonitorWorkerEnv): Promise<Response> {
 			count: workers.length,
 			names: workers,
 		},
+		billingPeriod: billingPeriod ?? undefined,
 		github: env.GITHUB_REPO ? { repo: env.GITHUB_REPO, configured: true } : { configured: false },
 		slack: { configured: !!env.SLACK_WEBHOOK_URL },
 		timestamp: Date.now(),
@@ -120,11 +129,57 @@ async function handleErrors(env: MonitorWorkerEnv): Promise<Response> {
 	});
 }
 
+async function handlePlan(env: MonitorWorkerEnv): Promise<Response> {
+	const [plan, billingPeriod] = await Promise.all([
+		getPlanOrCached(env),
+		getBillingPeriodOrCached(env),
+	]);
+
+	const allowances = getAllowancesForPlan(plan);
+	const daysRemaining = billingPeriod
+		? Math.max(0, Math.ceil((new Date(billingPeriod.end).getTime() - Date.now()) / 86_400_000))
+		: undefined;
+
+	return Response.json({
+		account: env.ACCOUNT_NAME,
+		plan,
+		billingPeriod: billingPeriod ?? undefined,
+		daysRemaining,
+		allowances,
+		timestamp: Date.now(),
+	});
+}
+
+async function handleUsage(env: MonitorWorkerEnv): Promise<Response> {
+	const today = new Date().toISOString().slice(0, 10);
+	const [snapshotRaw, plan, billingPeriod] = await Promise.all([
+		env.CF_MONITOR_KV.get(`${KV.USAGE_ACCOUNT}${today}`),
+		getPlanOrCached(env),
+		getBillingPeriodOrCached(env),
+	]);
+
+	const allowances = getAllowancesForPlan(plan);
+	const snapshot = snapshotRaw ? JSON.parse(snapshotRaw) : null;
+
+	return Response.json({
+		account: env.ACCOUNT_NAME,
+		plan,
+		billingPeriod: billingPeriod ?? undefined,
+		allowances,
+		usage: snapshot,
+		disclaimer: 'Approximate — from CF GraphQL Analytics API. Not authoritative for billing.',
+		timestamp: Date.now(),
+	});
+}
+
 async function handleBudgets(env: MonitorWorkerEnv): Promise<Response> {
 	// List active circuit breakers
 	const breakers: Array<{ featureId: string; status: string }> = [];
 
-	const list = await env.CF_MONITOR_KV.list({ prefix: KV.CB_FEATURE, limit: 100 });
+	const [list, billingPeriod] = await Promise.all([
+		env.CF_MONITOR_KV.list({ prefix: KV.CB_FEATURE, limit: 100 }),
+		getBillingPeriodOrCached(env),
+	]);
 	for (const key of list.keys) {
 		if (key.name.endsWith(':reason')) continue;
 		const raw = await env.CF_MONITOR_KV.get(key.name);
@@ -136,8 +191,6 @@ async function handleBudgets(env: MonitorWorkerEnv): Promise<Response> {
 		} else if (raw === 'GO') {
 			status = 'resetting';
 		} else if (raw === null) {
-			// Key in list() but null from get() — KV edge cache inconsistency.
-			// Key existing means a CB was written. Safer to assume tripped.
 			status = 'tripped';
 		} else {
 			status = raw;
@@ -148,6 +201,7 @@ async function handleBudgets(env: MonitorWorkerEnv): Promise<Response> {
 
 	return Response.json({
 		account: env.ACCOUNT_NAME,
+		billingPeriod: billingPeriod ?? undefined,
 		circuitBreakers: breakers,
 		count: breakers.length,
 		timestamp: Date.now(),
@@ -175,6 +229,7 @@ const CRON_HANDLERS: Record<string, (env: MonitorWorkerEnv) => Promise<void>> = 
 	'budget-check': checkBudgets,
 	'cost-spike': detectCostSpikes,
 	'metrics': collectAccountMetrics,
+	'collect-account-usage': collectAccountUsage,
 	'synthetic-health': runSyntheticHealthCheck,
 	'worker-discovery': discoverWorkers,
 	'daily-rollup': runDailyRollup,

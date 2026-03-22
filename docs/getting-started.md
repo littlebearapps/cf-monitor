@@ -9,6 +9,7 @@ This guide walks you through installing cf-monitor, deploying the monitor worker
 - **At least one deployed Worker** on the account you want to monitor
 - **Wrangler CLI** installed (`npm install -g wrangler`)
 - **A Cloudflare API token** with Workers and Analytics Engine permissions
+  - *Optional but recommended*: include `Account Settings: Read` permission for automatic plan detection (without it, cf-monitor defaults to Workers Paid plan budgets)
 
 ## Step 1: Install the SDK
 
@@ -179,6 +180,30 @@ To sync issue close/reopen/mute events back to cf-monitor:
 4. Content type: `application/json`
 5. Secret: the same value you set above
 6. Events: select "Issues"
+
+## Step 8: Check account usage (optional)
+
+After the first hourly cron runs (~up to 60 minutes after deploy), check your account-wide CF service usage:
+
+```bash
+npx cf-monitor usage
+```
+
+This shows per-service usage (D1, KV, R2, Workers, AI, etc.) vs your plan's included allowances, with colour-coded percentage bars. The data comes from Cloudflare's GraphQL Analytics API — your existing API token already has the permissions needed.
+
+You can also trigger usage collection immediately:
+
+```bash
+curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/collect-account-usage
+```
+
+Or query the API:
+
+```
+GET https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/usage
+```
+
+> **Important**: Usage data from the GraphQL API is approximate and should not be used as a measure for billing purposes. It updates hourly with a ~60 second aggregation delay.
 
 ## Next steps
 

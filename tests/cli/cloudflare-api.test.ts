@@ -72,13 +72,14 @@ describe('listWorkers', () => {
 });
 
 describe('getAccountPlan', () => {
-	it('returns plan type', async () => {
+	it('returns "paid" for workers_paid subscription', async () => {
 		mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({
-			result: { settings: { default_usage_model: 'bundled' } },
+			success: true,
+			result: [{ rate_plan: { id: 'workers_paid', scope: 'account' }, current_period_start: '2026-03-02T00:00:00Z', current_period_end: '2026-04-02T00:00:00Z' }],
 		})));
 
 		const plan = await getAccountPlan('acc', 'token');
-		expect(plan).toBe('bundled');
+		expect(plan).toBe('paid');
 	});
 
 	it('returns "unknown" on API error', async () => {
@@ -87,12 +88,13 @@ describe('getAccountPlan', () => {
 		expect(plan).toBe('unknown');
 	});
 
-	it('returns "paid" when settings missing', async () => {
+	it('returns "free" when no workers_paid subscription', async () => {
 		mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({
-			result: {},
+			success: true,
+			result: [],
 		})));
 
 		const plan = await getAccountPlan('acc', 'token');
-		expect(plan).toBe('paid');
+		expect(plan).toBe('free');
 	});
 });
