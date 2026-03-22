@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { handleFetch } from '../../src/worker/fetch-handler.js';
 import { KV } from '../../src/constants.js';
 import { createMockMonitorWorkerEnv } from '../helpers/mock-env.js';
@@ -40,17 +40,48 @@ describe('handleFetch', () => {
 		expect((body.errors as Array<Record<string, string>>)[0].fingerprint).toBe('abc123');
 	});
 
-	it('GET /budgets lists active circuit breakers', async () => {
+	it('GET /budgets shows "tripped" for STOP circuit breakers', async () => {
 		const env = createMockMonitorWorkerEnv();
 		await env.CF_MONITOR_KV.put(`${KV.CB_FEATURE}my-feature`, 'STOP');
 		await env.CF_MONITOR_KV.put(`${KV.CB_FEATURE}my-feature:reason`, 'Budget exceeded');
 
 		const resp = await handleFetch(createRequest('/budgets'), env, createMockCtx());
-		const body = await resp.json() as Record<string, unknown>;
+		const body = await resp.json() as { circuitBreakers: Array<{ featureId: string; status: string }>; count: number };
 
 		expect(resp.status).toBe(200);
-		// Should have 1 CB (reason key is filtered out)
 		expect(body.count).toBe(1);
+		expect(body.circuitBreakers[0].featureId).toBe('my-feature');
+		expect(body.circuitBreakers[0].status).toBe('tripped');
+	});
+
+	it('GET /budgets shows "resetting" for GO circuit breakers', async () => {
+		const env = createMockMonitorWorkerEnv();
+		await env.CF_MONITOR_KV.put(`${KV.CB_FEATURE}my-feature`, 'GO');
+
+		const resp = await handleFetch(createRequest('/budgets'), env, createMockCtx());
+		const body = await resp.json() as { circuitBreakers: Array<{ featureId: string; status: string }> };
+
+		expect(body.circuitBreakers).toHaveLength(1);
+		expect(body.circuitBreakers[0].status).toBe('resetting');
+	});
+
+	it('GET /budgets shows "tripped" when KV get returns null (edge cache inconsistency)', async () => {
+		const env = createMockMonitorWorkerEnv();
+		await env.CF_MONITOR_KV.put(`${KV.CB_FEATURE}stale-feature`, 'STOP');
+
+		// Simulate edge cache inconsistency: list() finds key but get() returns null
+		const originalGet = env.CF_MONITOR_KV.get.bind(env.CF_MONITOR_KV);
+		vi.spyOn(env.CF_MONITOR_KV, 'get').mockImplementation(async (key: string, ...args: unknown[]) => {
+			if (key === `${KV.CB_FEATURE}stale-feature`) return null;
+			return (originalGet as Function)(key, ...args);
+		});
+
+		const resp = await handleFetch(createRequest('/budgets'), env, createMockCtx());
+		const body = await resp.json() as { circuitBreakers: Array<{ featureId: string; status: string }> };
+
+		expect(body.circuitBreakers).toHaveLength(1);
+		expect(body.circuitBreakers[0].featureId).toBe('stale-feature');
+		expect(body.circuitBreakers[0].status).toBe('tripped');
 	});
 
 	it('GET /workers returns discovered workers', async () => {

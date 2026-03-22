@@ -127,9 +127,23 @@ async function handleBudgets(env: MonitorWorkerEnv): Promise<Response> {
 	const list = await env.CF_MONITOR_KV.list({ prefix: KV.CB_FEATURE, limit: 100 });
 	for (const key of list.keys) {
 		if (key.name.endsWith(':reason')) continue;
-		const status = await env.CF_MONITOR_KV.get(key.name);
+		const raw = await env.CF_MONITOR_KV.get(key.name);
 		const featureId = key.name.replace(KV.CB_FEATURE, '');
-		breakers.push({ featureId, status: status ?? 'unknown' });
+
+		let status: string;
+		if (raw === 'STOP') {
+			status = 'tripped';
+		} else if (raw === 'GO') {
+			status = 'resetting';
+		} else if (raw === null) {
+			// Key in list() but null from get() — KV edge cache inconsistency.
+			// Key existing means a CB was written. Safer to assume tripped.
+			status = 'tripped';
+		} else {
+			status = raw;
+		}
+
+		breakers.push({ featureId, status });
 	}
 
 	return Response.json({
