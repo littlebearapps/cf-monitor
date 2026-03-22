@@ -38,7 +38,7 @@
 | **Language** | TypeScript |
 | **Runtime** | Cloudflare Workers |
 | **npm** | `@littlebearapps/cf-monitor` |
-| **Status** | v0.3.1 — production-tested, published to npm |
+| **Status** | v0.3.2 — production-tested, published to npm |
 | **Repository** | https://github.com/littlebearapps/cf-monitor |
 | **Licence** | MIT |
 | **Issues** | https://github.com/littlebearapps/cf-monitor/issues |
@@ -82,7 +82,8 @@ cf-monitor/
 │   │   ├── index.ts          # Export: { fetch, scheduled, tail }
 │   │   ├── tail-handler.ts   # Error capture → fingerprint → GitHub issue
 │   │   ├── scheduled-handler.ts # Cron multiplexer
-│   │   ├── fetch-handler.ts  # API: /status, /errors, /budgets, /workers, /plan, /usage + admin cron triggers + GitHub webhooks
+│   │   ├── fetch-handler.ts  # API: /status, /errors, /budgets, /workers, /plan, /usage, /self-health + admin cron triggers + GitHub webhooks
+│   │   ├── self-monitor.ts   # Self-monitoring: cron tracking, error counts, AE telemetry, staleness detection
 │   │   ├── account/          # Account-level concerns (plan detection, billing period, allowances)
 │   │   ├── crons/            # Cron handlers (metrics, usage collection, budgets, gaps, discovery)
 │   │   ├── errors/           # Fingerprinting, patterns, GitHub issue CRUD
@@ -100,7 +101,7 @@ cf-monitor/
 │
 ├── vitest.integration.config.ts  # Integration test config (globalSetup, 120s timeout)
 │
-└── tests/                    # 222 unit tests + 53 integration tests
+└── tests/                    # 286 unit tests + 53 integration tests
     ├── helpers/               # Mock KV, AE, env, request factories
     ├── sdk/                   # monitor, proxy, metrics, detection, circuit-breaker
     ├── worker/                # tail, fetch, scheduled, config, ae-client, crons, errors
