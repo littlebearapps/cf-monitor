@@ -16,6 +16,18 @@ import { collectAccountUsage } from './crons/collect-account-usage.js';
 import { getPlanOrCached, getBillingPeriodOrCached } from './account/subscriptions.js';
 import { getAllowancesForPlan } from './account/plan-allowances.js';
 
+// CORS headers for GET endpoints — allows browser-based monitoring dashboards
+const CORS_HEADERS: Record<string, string> = {
+	'Access-Control-Allow-Origin': '*',
+	'Access-Control-Allow-Methods': 'GET, OPTIONS',
+	'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+/** Response.json() with CORS headers for GET endpoints. */
+function jsonWithCors(data: unknown, status = 200): Response {
+	return Response.json(data, { status, headers: CORS_HEADERS });
+}
+
 /**
  * API endpoints for the cf-monitor worker.
  *
@@ -54,6 +66,11 @@ export async function handleFetch(
 		return Response.json({ error: 'Not found' }, { status: 404 });
 	}
 
+	// CORS preflight for browser-based access
+	if (request.method === 'OPTIONS') {
+		return new Response(null, { status: 204, headers: CORS_HEADERS });
+	}
+
 	if (request.method !== 'GET') {
 		return Response.json({ error: 'Method not allowed' }, { status: 405 });
 	}
@@ -80,7 +97,7 @@ export async function handleFetch(
 // =============================================================================
 
 async function handleHealth(env: MonitorWorkerEnv): Promise<Response> {
-	return Response.json({
+	return jsonWithCors({
 		healthy: true,
 		account: env.ACCOUNT_NAME,
 		timestamp: Date.now(),
@@ -90,20 +107,20 @@ async function handleHealth(env: MonitorWorkerEnv): Promise<Response> {
 async function handleSelfHealth(env: MonitorWorkerEnv): Promise<Response> {
 	try {
 		const status = await getSelfHealth(env);
-		return Response.json({
+		return jsonWithCors({
 			healthy: status.healthy,
 			staleCrons: status.staleCrons,
 			errors: status.todayErrors,
 			handlers: status.handlerErrors,
 			crons: status.crons,
 			timestamp: Date.now(),
-		}, { status: status.healthy ? 200 : 503 });
+		}, status.healthy ? 200 : 503);
 	} catch (err) {
-		return Response.json({
+		return jsonWithCors({
 			healthy: false,
 			error: 'Failed to gather self-health',
 			timestamp: Date.now(),
-		}, { status: 500 });
+		}, 500);
 	}
 }
 
@@ -117,7 +134,7 @@ async function handleStatus(env: MonitorWorkerEnv): Promise<Response> {
 
 	const workers = workerList ? JSON.parse(workerList) as string[] : [];
 
-	return Response.json({
+	return jsonWithCors({
 		account: env.ACCOUNT_NAME,
 		plan,
 		healthy: !globalCb && accountCb !== 'paused',
@@ -147,7 +164,7 @@ async function handleErrors(env: MonitorWorkerEnv): Promise<Response> {
 		}
 	}
 
-	return Response.json({
+	return jsonWithCors({
 		account: env.ACCOUNT_NAME,
 		errors,
 		count: errors.length,
@@ -166,7 +183,7 @@ async function handlePlan(env: MonitorWorkerEnv): Promise<Response> {
 		? Math.max(0, Math.ceil((new Date(billingPeriod.end).getTime() - Date.now()) / 86_400_000))
 		: undefined;
 
-	return Response.json({
+	return jsonWithCors({
 		account: env.ACCOUNT_NAME,
 		plan,
 		billingPeriod: billingPeriod ?? undefined,
@@ -187,7 +204,7 @@ async function handleUsage(env: MonitorWorkerEnv): Promise<Response> {
 	const allowances = getAllowancesForPlan(plan);
 	const snapshot = snapshotRaw ? JSON.parse(snapshotRaw) : null;
 
-	return Response.json({
+	return jsonWithCors({
 		account: env.ACCOUNT_NAME,
 		plan,
 		billingPeriod: billingPeriod ?? undefined,
@@ -225,7 +242,7 @@ async function handleBudgets(env: MonitorWorkerEnv): Promise<Response> {
 		breakers.push({ featureId, status });
 	}
 
-	return Response.json({
+	return jsonWithCors({
 		account: env.ACCOUNT_NAME,
 		billingPeriod: billingPeriod ?? undefined,
 		circuitBreakers: breakers,
@@ -238,7 +255,7 @@ async function handleWorkers(env: MonitorWorkerEnv): Promise<Response> {
 	const workerList = await env.CF_MONITOR_KV.get(KV.WORKER_LIST);
 	const workers = workerList ? JSON.parse(workerList) as string[] : [];
 
-	return Response.json({
+	return jsonWithCors({
 		account: env.ACCOUNT_NAME,
 		workers,
 		count: workers.length,

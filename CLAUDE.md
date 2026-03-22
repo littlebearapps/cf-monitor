@@ -256,6 +256,12 @@ Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
 
 **#44 — Self-monitoring**: cf-monitor now tracks its own handler execution, errors, and cron staleness. New `self-monitor.ts` module provides fail-open recording functions. All 3 handlers (tail, scheduled, fetch) are instrumented. New `GET /self-health` endpoint returns handler status, error counts, and stale cron detection (200 when healthy, 503 when stale). Staleness alerts via Slack (1/day dedup). Self-telemetry written to AE (`blob2` format: `self:{durationMs}:{1|0}`, `doubles[0]=1`). New KV prefixes: `self:v1:cron:last_run` (handler timestamps as single JSON blob), `self:v1:error:{handler}:{date}` (error counts), `self:v1:errors:count:{date}` (daily total). `CRON_HANDLER_REGISTRY` constant for staleness thresholds. Admin cron trigger: `POST /admin/cron/staleness-check`. Phase 3 (self-capture via error pipeline) deferred to future version.
 
+## v0.3.4 CORS + Binding Exclusion
+
+- **CORS headers**: All GET endpoints include `Access-Control-Allow-Origin: *`. OPTIONS preflight returns 204. POST endpoints unchanged (server-to-server only). (#74)
+- **`excludeBindings` option**: New `MonitorConfig.excludeBindings?: string[]` — env binding names to skip from proxy wrapping. Prevents false-positive metric tracking on custom env objects that match CF binding method signatures. (#75)
+- Updated `docs/security.md` with "Binding detection" section documenting `excludeBindings` as mitigation.
+
 ## v0.3.3 Security Hardening
 
 Full security audit with 9 fixes:

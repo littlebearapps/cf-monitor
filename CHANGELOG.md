@@ -2,6 +2,20 @@
 
 All notable changes to cf-monitor are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
+## [0.3.4] - 2026-03-22
+
+### Added
+- CORS headers on all GET endpoints — `Access-Control-Allow-Origin: *` enables browser-based monitoring dashboards (#74)
+- OPTIONS preflight handler returns 204 with CORS headers
+- `excludeBindings` option in `MonitorConfig` — skip proxy wrapping for specific env binding names that accidentally match CF binding method signatures (#75)
+
+### Changed
+- `createTrackedEnv()` accepts optional `excludeBindings` parameter, merged with internal skip set
+- `detectBindings()` accepts optional `excludeKeys` parameter
+- `docs/security.md` — updated duck-typing section with `excludeBindings` mitigation
+- `docs/configuration.md` — added `excludeBindings` to SDK Options section
+- Unit tests increased from 286 to 290
+
 ## [0.3.3] - 2026-03-22
 
 ### Security
@@ -149,6 +163,7 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
+[0.3.4]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.0...v0.3.1

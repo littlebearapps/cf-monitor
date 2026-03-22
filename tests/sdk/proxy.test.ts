@@ -241,6 +241,31 @@ describe('Durable Object proxy (#12)', () => {
 	});
 });
 
+describe('excludeBindings (#75)', () => {
+	it('excluded binding keys are NOT wrapped', async () => {
+		const env = createMockConsumerEnv();
+		const te = createTrackedEnv(env, 'test:fetch:GET:api', 'test-worker', undefined, ['MY_KV']);
+		const info = getTrackingInfo(te);
+
+		// MY_KV is in excludeBindings — accessing it should return the raw mock
+		const kv = (te as any).MY_KV;
+		expect(kv).toBe(env.MY_KV);
+		await kv.get('test');
+		// kvReads should NOT have incremented
+		expect(info.metrics.kvReads).toBe(0);
+	});
+
+	it('non-excluded bindings are still wrapped normally', async () => {
+		const env = createMockConsumerEnv();
+		const te = createTrackedEnv(env, 'test:fetch:GET:api', 'test-worker', undefined, ['MY_KV']);
+		const info = getTrackingInfo(te);
+
+		// DB is NOT excluded — should still be tracked
+		await (te as any).DB.prepare('SELECT 1').first();
+		expect(info.metrics.d1Reads).toBe(1);
+	});
+});
+
 describe('Workflow proxy (#12)', () => {
 	it('workflow.create() increments workflowInvocations', async () => {
 		const { te, metrics } = tracked();

@@ -201,6 +201,17 @@ monitor({
 })
 ```
 
+### Binding exclusion
+
+```typescript
+monitor({
+  excludeBindings: ['MY_CUSTOM_STORE'],  // Skip proxy wrapping for these env keys
+  fetch: handler,
+})
+```
+
+Use when custom env objects accidentally match CF binding method signatures (e.g. an object with `get()`, `put()`, `delete()`, `list()` methods). See [Security — Binding detection](./security.md#binding-detection).
+
 ### Options
 
 ```typescript

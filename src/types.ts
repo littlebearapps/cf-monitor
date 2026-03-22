@@ -65,6 +65,13 @@ export interface MonitorConfig<Env extends object = object> {
 
 	/** Max recursion depth for anti-loop guard. Default: 5. */
 	maxRecursionDepth?: number;
+
+	/**
+	 * Env binding names to exclude from proxy wrapping.
+	 * Use when custom env objects accidentally match CF binding method signatures.
+	 * These keys will be returned unwrapped (no metric tracking).
+	 */
+	excludeBindings?: string[];
 }
 
 // =============================================================================
