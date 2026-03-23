@@ -24,7 +24,8 @@
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.cli.json",
-    "prepublishOnly": "npm run build:cli"
+    "prepublishOnly": "npm run build:cli",
+    "release": "bash scripts/release.sh"
   },
   "publishConfig": {
     "access": "public"
