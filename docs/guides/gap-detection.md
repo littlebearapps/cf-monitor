@@ -46,12 +46,12 @@ When gaps are detected, a Slack alert is sent listing the affected workers. Aler
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /status` | Includes gap count in the status response |
-| `POST /admin/cron/gap-detection` | Manually trigger gap detection |
+| `POST /admin/cron/gap-detection` | Manually trigger gap detection (requires `ADMIN_TOKEN`) |
 
 ## Troubleshooting
 
 **False positives for low-traffic workers**: Workers that receive no requests won't generate telemetry. Consider excluding them via the `exclude` config or accepting the gap alert as informational.
 
-**Gap alerts after new deployment**: Newly deployed workers won't be in the `workers:list` until the next daily discovery run. Trigger discovery manually: `POST /admin/cron/worker-discovery`.
+**Gap alerts after new deployment**: Newly deployed workers won't be in the `workers:list` until the next daily discovery run. Trigger discovery manually: `POST /admin/cron/worker-discovery` (requires `Authorization: Bearer YOUR_ADMIN_TOKEN` header).
 
 **Gaps despite wired workers**: Check that the worker's `tail_consumers` config is correct (`"service": "cf-monitor"`) and that the worker has `CF_MONITOR_AE` and `CF_MONITOR_KV` bindings. Run `npx cf-monitor coverage` to see the full picture.

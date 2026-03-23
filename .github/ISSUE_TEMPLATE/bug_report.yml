@@ -1,0 +1,83 @@
+name: Bug Report
+description: Report a bug in cf-monitor
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of cf-monitor is affected?
+      options:
+        - SDK (monitor() wrapper)
+        - Monitor Worker (tail/cron/fetch)
+        - CLI (npx cf-monitor)
+        - Configuration (cf-monitor.yaml)
+        - Documentation
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: cf-monitor version
+      placeholder: "0.3.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: plan
+    attributes:
+      label: Cloudflare plan
+      options:
+        - Free
+        - Paid
+        - Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      placeholder: "22.x"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the issue.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: error-output
+    attributes:
+      label: Error output
+      description: Paste any error messages, stack traces, or logs.
+      render: shell
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Relevant cf-monitor.yaml (redact secrets).
+      render: yaml
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, links, or related issues.

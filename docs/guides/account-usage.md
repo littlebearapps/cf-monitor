@@ -74,7 +74,8 @@ The CLI shows per-service usage against your plan's included allowances, with co
 ## Manual trigger
 
 ```bash
-curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/collect-account-usage
+curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/collect-account-usage \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
 ```
 
 ## Requirements

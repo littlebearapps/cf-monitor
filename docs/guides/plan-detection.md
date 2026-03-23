@@ -61,7 +61,8 @@ After updating, delete the cached plan to force re-detection:
 ```bash
 # The cache will refresh on the next hourly cron
 # Or trigger manually:
-curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/budget-check
+curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/budget-check \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
 ```
 
 ## API

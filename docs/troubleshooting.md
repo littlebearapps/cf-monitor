@@ -192,7 +192,8 @@ Common issues and their solutions when using cf-monitor.
 
 1. **First cron hasn't run** — account usage is collected hourly on the `0 * * * *` schedule. Wait for the next hour, or trigger manually:
    ```bash
-   curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/collect-account-usage
+   curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/collect-account-usage \
+     -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
    ```
 
 2. **Missing CLOUDFLARE_API_TOKEN** — the same API token used for worker discovery is used for GraphQL queries. Ensure it's set as a secret on the cf-monitor worker.
