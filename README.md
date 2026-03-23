@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="https://raw.githubusercontent.com/littlebearapps/cf-monitor/main/docs/assets/cf-monitor-logo.png" height="160" alt="cf-monitor" />
+</p>
+
+<p align="center">
   <strong>@littlebearapps/cf-monitor</strong><br>
   Self-contained Cloudflare account monitoring.<br>
   One worker. Zero migrations. Born from a $4,868 bill.
@@ -195,11 +199,10 @@ D1 (reads, writes, rows) · KV (reads, writes, deletes, lists) · R2 (Class A, C
 | `npx cf-monitor config sync` | Push budgets from YAML to KV | — |
 | `npx cf-monitor config validate` | Validate cf-monitor.yaml against schema | — |
 | `npx cf-monitor upgrade` | Safe npm update + re-deploy | `--dry-run` |
-| `npx cf-monitor migrate` | Migrate from platform-consumer-sdk | `--from` |
 
 ## 🌐 API Endpoints
 
-The monitor worker exposes these endpoints:
+The monitor worker exposes these endpoints. All GET endpoints include CORS headers (`Access-Control-Allow-Origin: *`) for browser-based monitoring dashboards.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -277,47 +280,6 @@ npx cf-monitor upgrade --dry-run
 
 See the [changelog](./CHANGELOG.md) for version history.
 
-## 🔀 Migrating from platform-consumer-sdk
-
-| | platform-consumer-sdk | cf-monitor |
-|---|---|---|
-| **Scope** | Central account collects from all projects | Per-account, self-contained |
-| **Workers** | 10+ platform workers + agents per account | 1 worker per account |
-| **Storage** | D1 (61 migrations, 28 tables) + KV + Queue | AE + KV only (zero D1) |
-| **Queues** | 2 per account (telemetry + DLQ) | 0 |
-| **Config** | services.yaml + budgets.yaml + sync script | 1 cf-monitor.yaml |
-| **Setup** | 7+ manual steps | 3 CLI commands |
-| **SDK API** | 18 sub-path exports | 1 export: `monitor()` |
-| **Cross-account** | HMAC secrets, platform-agents | Not needed |
-| **Feature IDs** | Manual registration in YAML | Auto-generated |
-
-```typescript
-// Before (platform-consumer-sdk)
-import { platformWorker } from '@littlebearapps/platform-consumer-sdk/worker';
-export default platformWorker({
-  project: 'scout',
-  workerName: 'scout-harvester',
-  cronFeature: (cron) => ({ '0 2 * * *': 'scout:cron:arxiv-harvest' })[cron],
-  requestLimits: { d1Writes: 500 },
-  fetch: handler,
-  scheduled: cronHandler,
-});
-
-// After (cf-monitor)
-import { monitor } from '@littlebearapps/cf-monitor';
-export default monitor({
-  limits: { d1Writes: 500 },
-  fetch: handler,
-  scheduled: cronHandler,
-});
-```
-
-Binding changes: `PLATFORM_CACHE` → `CF_MONITOR_KV`, `PLATFORM_ANALYTICS` → `CF_MONITOR_AE`, remove `PLATFORM_TELEMETRY` (Queue).
-
-Or use the CLI: `npx cf-monitor migrate --from platform-consumer-sdk`
-
-See the [full migration guide](./docs/how-to/migrate-from-platform-sdk.md) for detailed steps.
-
 ## 📚 Documentation
 
 ### Getting started
@@ -335,12 +297,12 @@ See the [full migration guide](./docs/how-to/migrate-from-platform-sdk.md) for d
 - [Plan detection](./docs/guides/plan-detection.md) — Free vs Paid, billing period, permissions
 - [Account usage](./docs/guides/account-usage.md) — GraphQL queries, services, limitations
 - [Gap detection](./docs/guides/gap-detection.md) — coverage monitoring
+- [Self-monitoring](./docs/guides/self-monitoring.md) — cron tracking, error counts, debugging cf-monitor itself
 
 ### How-to
 
 - [GitHub webhooks](./docs/how-to/github-webhooks.md) — bidirectional issue sync setup
 - [Custom feature IDs](./docs/how-to/custom-feature-ids.md) — featureId, featurePrefix, features map
-- [Migrate from platform-sdk](./docs/how-to/migrate-from-platform-sdk.md) — expanded migration guide
 
 ### Security & Reference
 
@@ -356,16 +318,14 @@ Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for development 
 git clone https://github.com/littlebearapps/cf-monitor.git
 cd cf-monitor
 npm install
-npm test                    # 286 unit tests
+npm test                    # 290 unit tests
 npm run test:integration    # 53 integration tests (needs CF credentials)
 npm run typecheck           # TypeScript strict mode
 ```
 
 ## 🙏 Acknowledgements
 
-cf-monitor is a spiritual successor to [@littlebearapps/platform-consumer-sdk](https://github.com/littlebearapps/platform-sdks), which provided centralised monitoring across multiple Cloudflare accounts. The SDK's circuit breaker patterns, AE telemetry layout, and error fingerprinting algorithm were carried forward into cf-monitor's simpler per-account architecture.
-
-The project was born from a [$4,868 billing incident](./docs/guides/cost-protection.md) in January 2026, which proved that monitoring systems must be self-contained per account — not centralised.
+The project was born from a [$4,868 billing incident](./docs/guides/cost-protection.md) in January 2026, which proved that Cloudflare monitoring must be self-contained per account. The circuit breaker patterns, AE telemetry layout, and error fingerprinting algorithm were refined through months of real production use before becoming cf-monitor.
 
 ## 📄 Licence
 

@@ -118,6 +118,7 @@ Use the dry-run endpoint to test GitHub issue formatting without creating real i
 
 ```bash
 curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/test/github-dry-run \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"scriptName":"my-worker","outcome":"exception","errorMessage":"Connection timeout"}'
 ```

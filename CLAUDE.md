@@ -38,14 +38,14 @@
 | **Language** | TypeScript |
 | **Runtime** | Cloudflare Workers |
 | **npm** | `@littlebearapps/cf-monitor` |
-| **Status** | v0.3.2 — production-tested, published to npm |
+| **Status** | v0.3.4 — production-tested, published to npm |
 | **Repository** | https://github.com/littlebearapps/cf-monitor |
 | **Licence** | MIT |
 | **Issues** | https://github.com/littlebearapps/cf-monitor/issues |
 
 **Quick Commands**:
 ```bash
-npm test                    # Run unit tests (254 tests, vitest)
+npm test                    # Run unit tests (290 tests, vitest)
 npm run test:integration    # Run integration tests (53 tests across 10 files, needs CF credentials)
 npm run typecheck           # TypeScript check (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
@@ -101,7 +101,7 @@ cf-monitor/
 │
 ├── vitest.integration.config.ts  # Integration test config (globalSetup, 120s timeout)
 │
-└── tests/                    # 286 unit tests + 53 integration tests
+└── tests/                    # 290 unit tests + 53 integration tests
     ├── helpers/               # Mock KV, AE, env, request factories
     ├── sdk/                   # monitor, proxy, metrics, detection, circuit-breaker
     ├── worker/                # tail, fetch, scheduled, config, ae-client, crons, errors

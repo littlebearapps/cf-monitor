@@ -1,0 +1,32 @@
+# cf-monitor
+
+> Self-contained Cloudflare account monitoring. One worker per account. Zero D1. Born from a $4,868 bill.
+
+cf-monitor wraps Cloudflare Workers with a single `monitor()` call, tracks every D1/KV/R2/AI/Queue operation, and shuts things down before they become expensive. Install on any CF account and get full observability with ONE worker.
+
+## Documentation
+
+- [README](https://github.com/littlebearapps/cf-monitor/blob/main/README.md): Overview, quick start, features, SDK API, CLI commands, architecture
+- [Getting Started](https://github.com/littlebearapps/cf-monitor/blob/main/docs/getting-started.md): Step-by-step setup from install to verified monitoring
+- [Configuration Reference](https://github.com/littlebearapps/cf-monitor/blob/main/docs/configuration.md): All cf-monitor.yaml and MonitorConfig SDK options
+- [Security](https://github.com/littlebearapps/cf-monitor/blob/main/docs/security.md): Admin auth, secrets, threat model, data exposure
+- [Troubleshooting](https://github.com/littlebearapps/cf-monitor/blob/main/docs/troubleshooting.md): 14 common issues with solutions
+- [Changelog](https://github.com/littlebearapps/cf-monitor/blob/main/CHANGELOG.md): Version history v0.1.0 to v0.3.4
+- [Contributing](https://github.com/littlebearapps/cf-monitor/blob/main/CONTRIBUTING.md): Development setup and conventions
+
+## Guides
+
+- [Error Collection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/error-collection.md): Fingerprinting, dedup, GitHub issues
+- [Budgets & Circuit Breakers](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/budgets-and-circuit-breakers.md): 4 layers of cost protection
+- [Cost Protection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/cost-protection.md): The $4,868 billing incident and prevention
+- [Worker Discovery](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/worker-discovery.md): Auto-discovery, exclude patterns
+- [Slack Alerts](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/slack-alerts.md): Alert types, dedup, webhook setup
+- [Plan Detection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/plan-detection.md): Free vs Paid, billing period
+- [Account Usage](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/account-usage.md): GraphQL queries, services, limitations
+- [Gap Detection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/gap-detection.md): Coverage monitoring
+- [Self-Monitoring](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/self-monitoring.md): Cron tracking, error counts, debugging cf-monitor
+
+## How-to
+
+- [GitHub Webhooks](https://github.com/littlebearapps/cf-monitor/blob/main/docs/how-to/github-webhooks.md): Bidirectional issue sync setup
+- [Custom Feature IDs](https://github.com/littlebearapps/cf-monitor/blob/main/docs/how-to/custom-feature-ids.md): featureId, featurePrefix, features map

@@ -77,6 +77,7 @@ Use the dry-run endpoint to test Slack message formatting without sending to you
 
 ```bash
 curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/test/slack-dry-run \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"type":"budget-warning","featureId":"test","metric":"kv_reads","current":900,"limit":1000}'
 ```
