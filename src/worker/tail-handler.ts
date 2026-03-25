@@ -26,8 +26,9 @@ export async function handleTailEvents(
 		}
 	}
 
-	// Self-monitoring: record tail batch processing
+	// Batch summary log (#82)
 	const durationMs = Date.now() - start;
+	console.log(`[cf-monitor:tail] Batch: ${events.length} events, ${errorCount} errors, ${durationMs}ms`);
 	const batchSuccess = errorCount === 0;
 	try {
 		recordSelfTelemetry(env, 'tail', durationMs, batchSuccess);
@@ -50,7 +51,10 @@ async function processEvent(event: TraceItem, env: MonitorWorkerEnv): Promise<vo
 	}
 
 	// Only capture error outcomes
-	if (!CAPTURABLE_OUTCOMES.has(outcome)) return;
+	if (!CAPTURABLE_OUTCOMES.has(outcome)) {
+		console.log(`[cf-monitor:tail] Skip non-capturable: ${scriptName}:${outcome}`);
+		return;
+	}
 
 	// Extract error details
 	const errorInfo = extractErrorInfo(event);
@@ -62,25 +66,37 @@ async function processEvent(event: TraceItem, env: MonitorWorkerEnv): Promise<vo
 
 	// Dedup: check if we already have a GitHub issue for this fingerprint
 	const existingIssueUrl = await env.CF_MONITOR_KV.get(`${KV.ERR_FINGERPRINT}${fingerprint}`);
-	if (existingIssueUrl) return; // Already tracked
+	if (existingIssueUrl) {
+		console.log(`[cf-monitor:tail] Dedup: ${scriptName}:${outcome} fp=${fingerprint} → ${existingIssueUrl}`);
+		return;
+	}
 
 	// Rate limit: max N issues per script per hour
 	const rateLimitKey = `${KV.ERR_RATE}${scriptName}:${currentHour()}`;
 	const currentRate = parseInt(await env.CF_MONITOR_KV.get(rateLimitKey) ?? '0', 10);
-	if (currentRate >= MAX_ISSUES_PER_SCRIPT_PER_HOUR) return;
+	if (currentRate >= MAX_ISSUES_PER_SCRIPT_PER_HOUR) {
+		console.log(`[cf-monitor:tail] Rate limit: ${scriptName} at ${currentRate}/${MAX_ISSUES_PER_SCRIPT_PER_HOUR}/hr`);
+		return;
+	}
 
 	// Transient dedup: one issue per category per day
 	if (isTransient) {
 		const transientKey = `${KV.ERR_TRANSIENT}${scriptName}:${outcome}:${currentDate()}`;
 		const existing = await env.CF_MONITOR_KV.get(transientKey);
-		if (existing) return;
+		if (existing) {
+			console.log(`[cf-monitor:tail] Transient dedup: ${scriptName}:${outcome} already reported today`);
+			return;
+		}
 		await env.CF_MONITOR_KV.put(transientKey, '1', { expirationTtl: 90000 }); // 25hr
 	}
 
 	// Lock to prevent duplicate issue creation
 	const lockKey = `${KV.ERR_LOCK}${fingerprint}`;
 	const lock = await env.CF_MONITOR_KV.get(lockKey);
-	if (lock) return;
+	if (lock) {
+		console.log(`[cf-monitor:tail] Lock: ${scriptName}:${outcome} fp=${fingerprint} — creation in progress`);
+		return;
+	}
 	await env.CF_MONITOR_KV.put(lockKey, '1', { expirationTtl: 60 }); // 60s
 
 	// Create GitHub issue if configured
@@ -98,6 +114,7 @@ async function processEvent(event: TraceItem, env: MonitorWorkerEnv): Promise<vo
 			});
 
 			if (issueUrl) {
+				console.log(`[cf-monitor:tail] Created issue: ${scriptName}:${outcome} → ${issueUrl}`);
 				// Store fingerprint → issue URL mapping (90 day TTL)
 				await env.CF_MONITOR_KV.put(`${KV.ERR_FINGERPRINT}${fingerprint}`, issueUrl, {
 					expirationTtl: 7_776_000, // 90 days
@@ -106,6 +123,8 @@ async function processEvent(event: TraceItem, env: MonitorWorkerEnv): Promise<vo
 		} catch (err) {
 			console.error(`[cf-monitor:tail] Failed to create GitHub issue: ${err}`);
 		}
+	} else {
+		console.warn(`[cf-monitor:tail] GitHub not configured (GITHUB_REPO=${!!env.GITHUB_REPO}, GITHUB_TOKEN=${!!env.GITHUB_TOKEN}) — skipping issue for ${scriptName}:${outcome}`);
 	}
 
 	// Increment rate counter
@@ -188,17 +207,26 @@ async function processLogEntry(
 
 	// Dedup: check existing fingerprint
 	const existingUrl = await env.CF_MONITOR_KV.get(`${KV.ERR_FINGERPRINT}${fingerprint}`);
-	if (existingUrl) return;
+	if (existingUrl) {
+		console.log(`[cf-monitor:tail] Dedup: ${scriptName}:${outcome} fp=${fingerprint} → ${existingUrl}`);
+		return;
+	}
 
 	// Rate limit
 	const rateLimitKey = `${KV.ERR_RATE}${scriptName}:${currentHour()}`;
 	const currentRate = parseInt(await env.CF_MONITOR_KV.get(rateLimitKey) ?? '0', 10);
-	if (currentRate >= MAX_ISSUES_PER_SCRIPT_PER_HOUR) return;
+	if (currentRate >= MAX_ISSUES_PER_SCRIPT_PER_HOUR) {
+		console.log(`[cf-monitor:tail] Rate limit: ${scriptName} at ${currentRate}/${MAX_ISSUES_PER_SCRIPT_PER_HOUR}/hr`);
+		return;
+	}
 
 	// Lock
 	const lockKey = `${KV.ERR_LOCK}${fingerprint}`;
 	const lock = await env.CF_MONITOR_KV.get(lockKey);
-	if (lock) return;
+	if (lock) {
+		console.log(`[cf-monitor:tail] Lock: ${scriptName}:${outcome} fp=${fingerprint} — creation in progress`);
+		return;
+	}
 	await env.CF_MONITOR_KV.put(lockKey, '1', { expirationTtl: 60 });
 
 	// Create GitHub issue
@@ -216,6 +244,7 @@ async function processLogEntry(
 			});
 
 			if (issueUrl) {
+				console.log(`[cf-monitor:tail] Created issue: ${scriptName}:${outcome} → ${issueUrl}`);
 				await env.CF_MONITOR_KV.put(`${KV.ERR_FINGERPRINT}${fingerprint}`, issueUrl, {
 					expirationTtl: 7_776_000,
 				});
@@ -223,6 +252,8 @@ async function processLogEntry(
 		} catch (err) {
 			console.error(`[cf-monitor:tail] Failed to create soft error issue: ${err}`);
 		}
+	} else {
+		console.warn(`[cf-monitor:tail] GitHub not configured — skipping soft error issue for ${scriptName}:${outcome}`);
 	}
 
 	await env.CF_MONITOR_KV.put(rateLimitKey, String(currentRate + 1), { expirationTtl: 7200 });

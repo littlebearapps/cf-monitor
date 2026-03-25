@@ -234,3 +234,54 @@ describe('soft error capture (#14)', () => {
 		expect(mockFetch).not.toHaveBeenCalled();
 	});
 });
+
+describe('observability logging (#82)', () => {
+	let logSpy: ReturnType<typeof vi.spyOn>;
+	let warnSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+		warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	});
+
+	it('logs batch summary', async () => {
+		await handleTailEvents([createTraceItem()], env, ctx);
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('[cf-monitor:tail] Batch:'));
+	});
+
+	it('warns when GitHub not configured', async () => {
+		env.GITHUB_REPO = '';
+		env.GITHUB_TOKEN = '';
+		await handleTailEvents([createTraceItem()], env, ctx);
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('GitHub not configured'));
+	});
+
+	it('logs dedup skip reason', async () => {
+		await handleTailEvents([createTraceItem()], env, ctx);
+		logSpy.mockClear();
+		await handleTailEvents([createTraceItem()], env, ctx);
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Dedup:'));
+	});
+
+	it('logs rate limit skip reason', async () => {
+		for (let i = 0; i < 11; i++) {
+			await handleTailEvents(
+				[createTraceItem({
+					exceptions: [{ name: 'Error', message: `Error ${i}`, timestamp: Date.now() }],
+				})],
+				env, ctx
+			);
+		}
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Rate limit:'));
+	});
+
+	it('logs issue creation success', async () => {
+		await handleTailEvents([createTraceItem()], env, ctx);
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Created issue:'));
+	});
+
+	it('logs non-capturable outcome', async () => {
+		await handleTailEvents([createTraceItem({ outcome: 'unknown_outcome' })], env, ctx);
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Skip non-capturable:'));
+	});
+});
