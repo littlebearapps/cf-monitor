@@ -47,7 +47,12 @@ describe('collectAccountUsage', () => {
 				d1AnalyticsAdaptiveGroups: [{ sum: { rowsRead: 50000, rowsWritten: 1000 } }],
 			}))
 			.mockResolvedValueOnce(graphqlResponse({
-				kvOperationsAdaptiveGroups: [{ sum: { readOperations: 3000, writeOperations: 100, listOperations: 5, deleteOperations: 2 } }],
+				kvOperationsAdaptiveGroups: [
+					{ dimensions: { actionType: 'read' }, sum: { requests: 3000 } },
+					{ dimensions: { actionType: 'write' }, sum: { requests: 100 } },
+					{ dimensions: { actionType: 'list' }, sum: { requests: 5 } },
+					{ dimensions: { actionType: 'delete' }, sum: { requests: 2 } },
+				],
 			}))
 			.mockResolvedValueOnce(graphqlResponse({
 				r2OperationsAdaptiveGroups: [],

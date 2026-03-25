@@ -89,8 +89,9 @@ async function queryCoreServices(
 			}
 		} } }`),
 		executeGraphQL(env, `{ viewer { accounts(filter: { ${accountFilter} }) {
-			kvOperationsAdaptiveGroups(filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }, limit: 100) {
-				sum { readOperations writeOperations listOperations deleteOperations }
+			kvOperationsAdaptiveGroups(filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }, limit: 1000) {
+				dimensions { actionType }
+				sum { requests }
 			}
 		} } }`),
 		executeGraphQL(env, `{ viewer { accounts(filter: { ${accountFilter} }) {
@@ -129,19 +130,18 @@ async function queryCoreServices(
 		}
 	} catch { /* skip */ }
 
-	// KV
+	// KV — aggregate by actionType dimension
 	try {
 		const kv = kvResult?.data?.viewer?.accounts?.[0]?.kvOperationsAdaptiveGroups;
 		if (kv?.length) {
-			let reads = 0;
-			let writes = 0;
-			let deletes = 0;
-			let lists = 0;
+			let reads = 0, writes = 0, deletes = 0, lists = 0;
 			for (const entry of kv) {
-				reads += entry.sum?.readOperations ?? 0;
-				writes += entry.sum?.writeOperations ?? 0;
-				deletes += entry.sum?.deleteOperations ?? 0;
-				lists += entry.sum?.listOperations ?? 0;
+				const action = entry.dimensions?.actionType ?? '';
+				const count = entry.sum?.requests ?? 0;
+				if (action === 'read') reads += count;
+				else if (action === 'write') writes += count;
+				else if (action === 'delete') deletes += count;
+				else if (action === 'list') lists += count;
 			}
 			services.kv = { reads, writes, deletes, lists };
 		}
