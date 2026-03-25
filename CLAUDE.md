@@ -1,6 +1,6 @@
 # CLAUDE.md - cf-monitor
 
-**Last Updated**: 2026-03-22
+**Last Updated**: 2026-03-23
 
 ---
 
@@ -50,6 +50,7 @@ npm run test:integration    # Run integration tests (53 tests across 10 files, n
 npm run typecheck           # TypeScript check (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
 npm pack --dry-run          # Verify package contents
+npm run release -- <version> # Release new version (bumps 6 files, commits, tags, pushes)
 ```
 
 ---
@@ -96,6 +97,9 @@ cf-monitor/
 │       ├── wrangler-generator.ts
 │       └── cloudflare-api.ts
 │
+├── scripts/
+│   └── release.sh            # Automated release (version bump, commit, tag, push)
+│
 ├── worker/                   # Pre-built entry for wrangler deploy
 │   └── index.ts
 │
@@ -112,6 +116,19 @@ cf-monitor/
         ├── test-consumer.ts   # 13-route consumer worker for testing
         └── 01-10*.test.ts     # Sequential: health, SDK, CB, telemetry, webhooks, budgets, crons, errors, dry-run, proxy-tracking
 ```
+
+---
+
+## Release Process
+
+```bash
+./scripts/release.sh 0.4.0    # or: npm run release -- 0.4.0
+```
+
+The script bumps version across 6 files (package.json, CHANGELOG.md, CLAUDE.md, bug_report.yml, llms.txt, docs/README.md), commits, tags, and pushes. GitHub Actions then: runs CI, publishes to npm, creates GitHub Release with CHANGELOG notes.
+
+**Workflow**: `.github/workflows/release.yml` (tag-triggered)
+**Branch cleanup**: Feature branches auto-delete on PR merge (repo setting).
 
 ---
 

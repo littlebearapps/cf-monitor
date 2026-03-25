@@ -2,6 +2,16 @@
 
 All notable changes to cf-monitor are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Tail handler produces zero observable output — added structured logging at every decision point: batch summary, dedup hits, rate limits, transient dedup, creation locks, missing GitHub config, and issue creation success (#82)
+- D1 GraphQL dataset name `d1AnalyticsAdaptive` does not exist — corrected to `d1AnalyticsAdaptiveGroups` with `date_geq`/`date_leq` filters in `collect-metrics.ts` (#80)
+- KV GraphQL fields `readOperations`/`writeOperations`/`listOperations`/`deleteOperations` do not exist on `kvOperationsAdaptiveGroups` — updated both `collect-metrics.ts` and `collect-account-usage.ts` to use `dimensions { actionType }` + `sum { requests }`, matching the R2 operations pattern (#81)
+
+### Changed
+- Unit tests increased from 290 to 296
+
 ## [0.3.4] - 2026-03-22
 
 ### Added
@@ -163,6 +173,7 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
+[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.4...HEAD
 [0.3.4]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.1...v0.3.2

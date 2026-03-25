@@ -58,6 +58,8 @@ export async function collectAccountMetrics(env: MonitorWorkerEnv): Promise<void
 function buildGraphQLQuery(accountId: string, start: Date, end: Date): string {
 	const startStr = start.toISOString();
 	const endStr = end.toISOString();
+	const startDate = start.toISOString().slice(0, 10);
+	const endDate = end.toISOString().slice(0, 10);
 
 	return `{
   viewer {
@@ -80,10 +82,10 @@ function buildGraphQLQuery(accountId: string, start: Date, end: Date): string {
           wallTime
         }
       }
-      d1AnalyticsAdaptive(
+      d1AnalyticsAdaptiveGroups(
         filter: {
-          datetime_geq: "${startStr}"
-          datetime_lt: "${endStr}"
+          date_geq: "${startDate}"
+          date_leq: "${endDate}"
         }
         limit: 100
       ) {
@@ -99,13 +101,13 @@ function buildGraphQLQuery(accountId: string, start: Date, end: Date): string {
           datetime_geq: "${startStr}"
           datetime_lt: "${endStr}"
         }
-        limit: 100
+        limit: 1000
       ) {
+        dimensions {
+          actionType
+        }
         sum {
-          readOperations
-          writeOperations
-          listOperations
-          deleteOperations
+          requests
         }
       }
     }
@@ -121,11 +123,12 @@ interface GraphQLResponse {
 					dimensions: { scriptName: string };
 					sum: { requests: number; errors: number; subrequests: number; wallTime: number };
 				}>;
-				d1AnalyticsAdaptive?: Array<{
+				d1AnalyticsAdaptiveGroups?: Array<{
 					sum: { readQueries: number; writeQueries: number; rowsRead: number; rowsWritten: number };
 				}>;
 				kvOperationsAdaptiveGroups?: Array<{
-					sum: { readOperations: number; writeOperations: number; listOperations: number; deleteOperations: number };
+					dimensions?: { actionType?: string };
+					sum: { requests: number };
 				}>;
 			}>;
 		};
@@ -153,7 +156,7 @@ function writeMetricsToAE(env: MonitorWorkerEnv, data: GraphQLResponse): void {
 	}
 
 	// D1 metrics (account-level aggregate)
-	for (const d1 of account.d1AnalyticsAdaptive ?? []) {
+	for (const d1 of account.d1AnalyticsAdaptiveGroups ?? []) {
 		env.CF_MONITOR_AE.writeDataPoint({
 			blobs: [env.ACCOUNT_NAME, 'graphql', 'd1'],
 			doubles: [
@@ -166,15 +169,24 @@ function writeMetricsToAE(env: MonitorWorkerEnv, data: GraphQLResponse): void {
 		});
 	}
 
-	// KV metrics (account-level aggregate)
+	// KV metrics — aggregate by actionType
+	let kvReads = 0, kvWrites = 0, kvDeletes = 0, kvLists = 0;
 	for (const kv of account.kvOperationsAdaptiveGroups ?? []) {
+		const action = kv.dimensions?.actionType ?? '';
+		const count = kv.sum?.requests ?? 0;
+		if (action === 'read') kvReads += count;
+		else if (action === 'write') kvWrites += count;
+		else if (action === 'delete') kvDeletes += count;
+		else if (action === 'list') kvLists += count;
+	}
+	if (kvReads || kvWrites || kvDeletes || kvLists) {
 		env.CF_MONITOR_AE.writeDataPoint({
 			blobs: [env.ACCOUNT_NAME, 'graphql', 'kv'],
 			doubles: [
 				0, 0,
-				kv.sum.readOperations, kv.sum.writeOperations,
+				kvReads, kvWrites,
 				0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-				kv.sum.deleteOperations, kv.sum.listOperations,
+				kvDeletes, kvLists,
 				0, 0, 0, 0,
 			],
 			indexes: [`${env.ACCOUNT_NAME}:graphql:kv`],
