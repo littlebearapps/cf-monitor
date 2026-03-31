@@ -4,6 +4,8 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-03-31
+
 ### Added
 - Runtime config resolution: `cf-monitor.yaml` is now embedded as `CF_MONITOR_CONFIG` env var during `init` and `deploy`. Worker resolves `$SECRET` references at runtime via `parseConfig()` (#87)
 - `--account-name` CLI option for `npx cf-monitor init` (#86)
@@ -191,7 +193,8 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
-[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.6...HEAD
+[0.3.6]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.2...v0.3.3
