@@ -284,3 +284,5 @@ See [Security — Admin endpoint authentication](./security.md#admin-endpoint-au
 3. **KV propagation** — self-monitoring timestamps are stored in KV with 48-hour TTL. Edge cache inconsistency may briefly show stale data.
 
 4. **Actual failure** — if a specific cron handler consistently appears stale, check `wrangler tail cf-monitor` for errors during that handler's schedule. Common causes: API token expired, GitHub rate limit, Slack webhook revoked.
+
+5. **Race condition (pre-v0.3.7)** — versions before v0.3.7 stored all cron timestamps in a single KV blob. When two crons ran concurrently (e.g. daily-rollup + worker-discovery at midnight), the last writer clobbered the other's timestamp, causing a false stale alert. Upgrade to v0.3.7+ which uses per-handler KV keys.
