@@ -6,6 +6,10 @@ export interface WranglerConfigOptions {
 	dataset?: string;
 	/** Human-readable account name (default: 'my-account'). */
 	accountName?: string;
+	/** GitHub repo for error issues (e.g. 'owner/repo'). */
+	githubRepo?: string;
+	/** Embedded cf-monitor.yaml as JSON (with $REFERENCES for secrets). */
+	configJson?: string;
 	/** Override the worker entry point (default: npm package path). */
 	main?: string;
 	/** Disable cron triggers (useful for test workers). */
@@ -24,6 +28,8 @@ export function generateWranglerConfig(
 	const workerName = options?.name ?? 'cf-monitor';
 	const dataset = options?.dataset ?? 'cf-monitor';
 	const accountName = options?.accountName ?? 'my-account';
+	const githubRepo = options?.githubRepo;
+	const configJson = options?.configJson;
 	const main = options?.main ?? 'node_modules/@littlebearapps/cf-monitor/worker/index.ts';
 
 	const crons = options?.noCrons ? [] : [
@@ -49,6 +55,8 @@ export function generateWranglerConfig(
 		vars: {
 			CF_ACCOUNT_ID: accountId,
 			ACCOUNT_NAME: accountName,
+			...(githubRepo ? { GITHUB_REPO: githubRepo } : {}),
+			...(configJson ? { CF_MONITOR_CONFIG: configJson } : {}),
 		},
 	};
 

@@ -94,6 +94,26 @@ Common issues and their solutions when using cf-monitor.
 
 **Detection chain**: `config.workerName` > `env.WORKER_NAME` > `env.name` > `'worker'`
 
+## GitHub issues not being created
+
+**Symptoms**: Errors are captured (visible in `GET /errors`) but no GitHub issues are created in the repo.
+
+**Causes and fixes**:
+
+1. **Missing `GITHUB_TOKEN` secret** — set it via `npx cf-monitor secret set GITHUB_TOKEN`. This must be a GitHub PAT with `repo` or `issues:write` scope.
+
+2. **Missing `GITHUB_REPO` var or config** — check that either:
+   - `GITHUB_REPO` is set in `.cf-monitor/wrangler.jsonc` vars, OR
+   - `CF_MONITOR_CONFIG` is set (automatically embedded since v0.3.6 when `--github-repo` is passed to `init` or `cf-monitor.yaml` has `github.repo` configured)
+
+3. **`cf-monitor.yaml` not re-embedded** — if you added `github.repo` to `cf-monitor.yaml` after initial deploy, run `npx cf-monitor deploy` to re-embed the config.
+
+4. **Rate limited** — cf-monitor limits to 10 issues per script per hour. Check `GET /errors` for rate limit entries.
+
+5. **Deduplication** — if the same error fingerprint already has a GitHub issue, cf-monitor won't create a duplicate. Check KV key `err:fp:{fingerprint}`.
+
+**Verify**: Run `npx cf-monitor status` — the response shows whether GitHub is configured.
+
 ## Budget enforcement not working
 
 **Symptoms**: usage accumulates in KV (`budget:usage:daily:*` keys) but no circuit breakers trip and no Slack warnings appear.

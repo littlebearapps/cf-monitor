@@ -35,16 +35,19 @@ It also generates two files:
 - `cf-monitor.yaml` — configuration (account, GitHub, Slack, budgets)
 - `wrangler.cf-monitor.jsonc` — wrangler config for the monitor worker
 
-### Optional: add GitHub and Slack
+### Optional: add GitHub, Slack, and account name
 
 If you want automatic GitHub issues for errors and Slack alerts for budget warnings:
 
 ```bash
 npx cf-monitor init \
   --account-id YOUR_ACCOUNT_ID \
+  --account-name my-project \
   --github-repo owner/repo \
   --slack-webhook https://hooks.slack.com/...
 ```
+
+The `--account-name` flag sets a human-readable label used in alerts, error reports, and telemetry. The `--github-repo` and `--slack-webhook` values are embedded in the generated wrangler config as `CF_MONITOR_CONFIG`, so the monitor worker picks them up automatically on deploy.
 
 ## Step 3: Deploy the monitor worker
 
@@ -52,7 +55,9 @@ npx cf-monitor init \
 npx cf-monitor deploy
 ```
 
-This deploys a single worker called `cf-monitor` on your account. This one worker handles:
+This deploys a single worker called `cf-monitor` on your account. The deploy command re-reads `cf-monitor.yaml` and re-embeds the config, so any changes you make to the YAML are picked up on the next deploy.
+
+This one worker handles:
 
 - **Tail events** — captures errors from all tailed workers
 - **Cron jobs** — gap detection, budget enforcement, metrics collection, worker discovery

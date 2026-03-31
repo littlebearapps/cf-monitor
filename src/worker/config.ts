@@ -64,6 +64,46 @@ export function parseConfig(env: MonitorWorkerEnv): ResolvedConfig | null {
 }
 
 /**
+ * Enrich the worker env with config values from CF_MONITOR_CONFIG.
+ *
+ * Precedence: direct env var/secret > resolved config > undefined.
+ * Never writes unresolved $REFERENCE strings to env (safety net for
+ * missing secrets).
+ *
+ * @returns A new env object with config values filled in, or the
+ *          original env if no CF_MONITOR_CONFIG is present.
+ */
+export function enrichEnv(env: MonitorWorkerEnv): MonitorWorkerEnv {
+	const config = parseConfig(env);
+	if (!config) return env;
+
+	const enriched = { ...env };
+
+	const mapping: Array<[keyof MonitorWorkerEnv, unknown]> = [
+		['GITHUB_REPO', config.github?.repo],
+		['GITHUB_TOKEN', config.github?.token],
+		['GITHUB_WEBHOOK_SECRET', config.github?.webhook_secret],
+		['SLACK_WEBHOOK_URL', config.alerts?.slack_webhook_url],
+		['GATUS_HEARTBEAT_URL', config.monitoring?.heartbeat_url],
+		['GATUS_TOKEN', config.monitoring?.heartbeat_token],
+		['ACCOUNT_NAME', config.account?.name],
+	];
+
+	for (const [key, value] of mapping) {
+		if (
+			typeof value === 'string' &&
+			value.length > 0 &&
+			!value.startsWith('$') &&
+			!enriched[key]
+		) {
+			(enriched as Record<string, unknown>)[key] = value;
+		}
+	}
+
+	return enriched;
+}
+
+/**
  * Recursively resolve $ENV_VAR references in a config object.
  * References like "$GITHUB_TOKEN" are replaced with the corresponding
  * value from the worker's env object.

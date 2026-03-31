@@ -4,6 +4,22 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 
 ## [Unreleased]
 
+### Added
+- Runtime config resolution: `cf-monitor.yaml` is now embedded as `CF_MONITOR_CONFIG` env var during `init` and `deploy`. Worker resolves `$SECRET` references at runtime via `parseConfig()` (#87)
+- `--account-name` CLI option for `npx cf-monitor init` (#86)
+- `enrichEnv()` helper for transparent config-to-env mapping with backward compatibility
+- YAML parser (`yaml-parser.ts`) for deploy-time config embedding — zero npm dependencies
+
+### Fixed
+- `GITHUB_REPO` not included in generated wrangler config — errors silently skipped on Scout and Brand Copilot accounts (#85)
+- `ACCOUNT_NAME` defaults to `my-account`, not passed from init options (#86)
+- `GITHUB_WEBHOOK_SECRET` now in `MonitorWorkerEnv` interface (was unsafe type cast in `fetch-handler.ts`)
+
+### Changed
+- `deploy` command re-embeds config from `cf-monitor.yaml` on every deployment — config changes take effect without re-running init
+- `init` command embeds config JSON from CLI flags into generated `wrangler.jsonc`
+- Unit tests increased from 300 to 316
+
 ## [0.3.5] - 2026-03-25
 
 ### Fixed

@@ -182,6 +182,7 @@ export interface MonitorWorkerEnv {
 	GATUS_HEARTBEAT_URL?: string;
 	GATUS_TOKEN?: string;
 	ADMIN_TOKEN?: string;
+	GITHUB_WEBHOOK_SECRET?: string;
 	AI?: Ai;
 }
 

@@ -43,4 +43,41 @@ describe('generateWranglerConfig', () => {
 		const parsed = parseConfig(generateWranglerConfig('acc123', 'kv', false));
 		expect((parsed.vars as Record<string, unknown>)?.CF_ACCOUNT_ID).toBe('acc123');
 	});
+
+	it('includes GITHUB_REPO in vars when githubRepo option provided', () => {
+		const parsed = parseConfig(generateWranglerConfig('acc', 'kv', false, {
+			githubRepo: 'owner/repo',
+		}));
+		expect((parsed.vars as Record<string, unknown>)?.GITHUB_REPO).toBe('owner/repo');
+	});
+
+	it('omits GITHUB_REPO from vars when githubRepo option not provided', () => {
+		const parsed = parseConfig(generateWranglerConfig('acc', 'kv', false));
+		expect((parsed.vars as Record<string, unknown>)?.GITHUB_REPO).toBeUndefined();
+	});
+
+	it('sets custom ACCOUNT_NAME when accountName option provided', () => {
+		const parsed = parseConfig(generateWranglerConfig('acc', 'kv', false, {
+			accountName: 'scout',
+		}));
+		expect((parsed.vars as Record<string, unknown>)?.ACCOUNT_NAME).toBe('scout');
+	});
+
+	it('defaults ACCOUNT_NAME to my-account when not provided', () => {
+		const parsed = parseConfig(generateWranglerConfig('acc', 'kv', false));
+		expect((parsed.vars as Record<string, unknown>)?.ACCOUNT_NAME).toBe('my-account');
+	});
+
+	it('includes CF_MONITOR_CONFIG in vars when configJson option provided', () => {
+		const configJson = JSON.stringify({ github: { repo: 'owner/repo' } });
+		const parsed = parseConfig(generateWranglerConfig('acc', 'kv', false, {
+			configJson,
+		}));
+		expect((parsed.vars as Record<string, unknown>)?.CF_MONITOR_CONFIG).toBe(configJson);
+	});
+
+	it('omits CF_MONITOR_CONFIG from vars when configJson not provided', () => {
+		const parsed = parseConfig(generateWranglerConfig('acc', 'kv', false));
+		expect((parsed.vars as Record<string, unknown>)?.CF_MONITOR_CONFIG).toBeUndefined();
+	});
 });

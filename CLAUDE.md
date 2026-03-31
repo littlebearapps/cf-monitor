@@ -1,6 +1,6 @@
 # CLAUDE.md - cf-monitor
 
-**Last Updated**: 2026-03-23
+**Last Updated**: 2026-03-31
 
 ---
 
@@ -45,7 +45,7 @@
 
 **Quick Commands**:
 ```bash
-npm test                    # Run unit tests (290 tests, vitest)
+npm test                    # Run unit tests (316 tests, vitest)
 npm run test:integration    # Run integration tests (53 tests across 10 files, needs CF credentials)
 npm run typecheck           # TypeScript check (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
@@ -272,6 +272,17 @@ Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
 ## v0.3.2 Features
 
 **#44 — Self-monitoring**: cf-monitor now tracks its own handler execution, errors, and cron staleness. New `self-monitor.ts` module provides fail-open recording functions. All 3 handlers (tail, scheduled, fetch) are instrumented. New `GET /self-health` endpoint returns handler status, error counts, and stale cron detection (200 when healthy, 503 when stale). Staleness alerts via Slack (1/day dedup). Self-telemetry written to AE (`blob2` format: `self:{durationMs}:{1|0}`, `doubles[0]=1`). New KV prefixes: `self:v1:cron:last_run` (handler timestamps as single JSON blob), `self:v1:error:{handler}:{date}` (error counts), `self:v1:errors:count:{date}` (daily total). `CRON_HANDLER_REGISTRY` constant for staleness thresholds. Admin cron trigger: `POST /admin/cron/staleness-check`. Phase 3 (self-capture via error pipeline) deferred to future version.
+
+## v0.3.6 Runtime Config Resolution
+
+- **Runtime config resolution**: `cf-monitor.yaml` is now the actual runtime config source. The CLI embeds it as `CF_MONITOR_CONFIG` JSON var in `wrangler.jsonc` during `init` and `deploy`. The worker calls `enrichEnv()` which resolves `$SECRET` references at runtime. (#87)
+- **`enrichEnv()`**: Non-mutating helper in `config.ts`. Precedence: direct env > config > undefined. `$`-prefix safety check prevents unresolved refs from being used. Called in `index.ts` for all 3 handlers (tail, scheduled, fetch). Zero handler changes needed.
+- **`--account-name` CLI option**: `npx cf-monitor init --account-name scout` sets the account name in both `cf-monitor.yaml` and `wrangler.jsonc`. (#86)
+- **YAML parser**: `src/cli/yaml-parser.ts` — line-by-line parser for `cf-monitor.yaml`, zero npm dependencies. Used by `deploy.ts` to re-embed config.
+- **Bug fix**: `GITHUB_REPO` not included in generated wrangler config — Scout and Brand Copilot silently skipped all GitHub issue creation. (#85)
+- **Bug fix**: `ACCOUNT_NAME` defaulted to `'my-account'`, never passed from init options. (#86)
+- **Bug fix**: `GITHUB_WEBHOOK_SECRET` added to `MonitorWorkerEnv` interface (was unsafe type cast).
+- **Backward compatible**: Existing deployments without `CF_MONITOR_CONFIG` continue working — `enrichEnv()` is a no-op.
 
 ## v0.3.4 CORS + Binding Exclusion
 

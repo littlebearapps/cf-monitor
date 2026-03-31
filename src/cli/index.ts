@@ -39,6 +39,7 @@ program
 	.option('--api-token <token>', 'Cloudflare API token')
 	.option('--github-repo <repo>', 'GitHub repo for error issues (owner/repo)')
 	.option('--slack-webhook <url>', 'Slack webhook URL for alerts')
+	.option('--account-name <name>', 'Human-readable account name')
 	.action(initCommand);
 
 program

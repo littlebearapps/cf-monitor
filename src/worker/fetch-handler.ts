@@ -498,7 +498,7 @@ async function handleSlackDryRun(request: Request): Promise<Response> {
 // =============================================================================
 
 async function handleGitHubWebhook(request: Request, env: MonitorWorkerEnv): Promise<Response> {
-	const secret = (env as unknown as Record<string, unknown>).GITHUB_WEBHOOK_SECRET as string | undefined;
+	const secret = env.GITHUB_WEBHOOK_SECRET;
 	if (!secret) {
 		return Response.json({ error: 'Webhook secret not configured' }, { status: 500 });
 	}

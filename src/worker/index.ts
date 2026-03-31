@@ -10,20 +10,21 @@
  */
 
 import type { MonitorWorkerEnv } from '../types.js';
+import { enrichEnv } from './config.js';
 import { handleTailEvents } from './tail-handler.js';
 import { handleScheduled } from './scheduled-handler.js';
 import { handleFetch } from './fetch-handler.js';
 
 export default {
 	async tail(events: TraceItem[], env: MonitorWorkerEnv, ctx: ExecutionContext): Promise<void> {
-		await handleTailEvents(events, env, ctx);
+		await handleTailEvents(events, enrichEnv(env), ctx);
 	},
 
 	async scheduled(controller: ScheduledController, env: MonitorWorkerEnv, ctx: ExecutionContext): Promise<void> {
-		await handleScheduled(controller, env, ctx);
+		await handleScheduled(controller, enrichEnv(env), ctx);
 	},
 
 	async fetch(request: Request, env: MonitorWorkerEnv, ctx: ExecutionContext): Promise<Response> {
-		return handleFetch(request, env, ctx);
+		return handleFetch(request, enrichEnv(env), ctx);
 	},
 } satisfies ExportedHandler<MonitorWorkerEnv>;

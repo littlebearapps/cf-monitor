@@ -9,6 +9,7 @@ interface InitOptions {
 	apiToken?: string;
 	githubRepo?: string;
 	slackWebhook?: string;
+	accountName?: string;
 }
 
 export async function initCommand(options: InitOptions): Promise<void> {
@@ -48,14 +49,29 @@ export async function initCommand(options: InitOptions): Promise<void> {
 	}
 
 	// Generate config
-	const configYaml = generateConfigYaml(accountId, options.githubRepo, options.slackWebhook);
+	const configYaml = generateConfigYaml(accountId, options.githubRepo, options.slackWebhook, options.accountName);
 	writeFileSync('cf-monitor.yaml', configYaml);
 	console.log(`\n  ${pc.green('Generated:')} cf-monitor.yaml`);
+
+	// Build config JSON from init options (same data as YAML, no parsing needed)
+	const configObj: Record<string, unknown> = {
+		account: { name: options.accountName ?? 'my-account', cloudflare_account_id: accountId },
+	};
+	if (options.githubRepo) {
+		configObj.github = { repo: options.githubRepo, token: '$GITHUB_TOKEN' };
+	}
+	if (options.slackWebhook) {
+		configObj.alerts = { slack_webhook_url: options.slackWebhook };
+	}
 
 	// Generate wrangler config
 	const cfMonitorDir = '.cf-monitor';
 	if (!existsSync(cfMonitorDir)) mkdirSync(cfMonitorDir);
-	const wranglerConfig = generateWranglerConfig(accountId, kvId, plan === 'free');
+	const wranglerConfig = generateWranglerConfig(accountId, kvId, plan === 'free', {
+		githubRepo: options.githubRepo,
+		accountName: options.accountName,
+		configJson: JSON.stringify(configObj),
+	});
 	writeFileSync(join(cfMonitorDir, 'wrangler.jsonc'), wranglerConfig);
 	console.log(`  ${pc.green('Generated:')} .cf-monitor/wrangler.jsonc`);
 
@@ -67,12 +83,12 @@ export async function initCommand(options: InitOptions): Promise<void> {
 	console.log('');
 }
 
-function generateConfigYaml(accountId: string, githubRepo?: string, slackWebhook?: string): string {
+function generateConfigYaml(accountId: string, githubRepo?: string, slackWebhook?: string, accountName?: string): string {
 	return `# cf-monitor configuration
 # Docs: https://github.com/littlebearapps/cf-monitor
 
 account:
-  name: my-account  # Human-readable name for this account
+  name: ${accountName ?? 'my-account'}  # Human-readable name for this account
   cloudflare_account_id: "${accountId}"
 
 ${githubRepo ? `github:

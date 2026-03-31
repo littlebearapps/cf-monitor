@@ -134,6 +134,18 @@ This prevents sensitive data (user IDs, tokens in paths) from appearing in featu
 
 The internal tracking metadata (metrics, feature ID, worker name) is stored on the env proxy using a module-private `Symbol()`. This is not discoverable by other code in the isolate, preventing malicious npm dependencies from reading internal metrics or worker names.
 
+## Configuration security
+
+Since v0.3.6, `cf-monitor.yaml` is embedded as a `CF_MONITOR_CONFIG` JSON var in `wrangler.jsonc` by the CLI.
+
+**`CF_MONITOR_CONFIG` is a plaintext wrangler var** — it is visible in the Cloudflare dashboard and in `wrangler.jsonc`. It never contains actual secret values.
+
+**Secrets are stored as `$VARIABLE_NAME` references** in the config JSON (e.g. `"token":"$GITHUB_TOKEN"`). At runtime, `parseConfig()` resolves these references against the worker's env object, where secrets live as encrypted wrangler secrets.
+
+**The `enrichEnv()` function has a `$`-prefix safety check**: if a `$REFERENCE` cannot be resolved (because the corresponding secret is not set), it is never written to env. This prevents literal strings like `$GITHUB_TOKEN` from being used as actual Bearer tokens in API calls.
+
+**Precedence**: Direct env vars/secrets always take priority over config resolution. If `GITHUB_TOKEN` is set as a wrangler secret AND referenced in config, the secret value wins.
+
 ## Binding detection
 
 cf-monitor uses duck-typing to identify Cloudflare binding types at runtime (checking for method signatures like `prepare()` + `batch()` for D1, `get()` + `put()` + `delete()` + `list()` for KV, etc.). This is fragile — a custom object on `env` matching these signatures would be incorrectly wrapped as a CF binding and tracked in metrics.
