@@ -4,6 +4,16 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-03-31
+
+### Fixed
+- Account usage and per-worker metrics queried GraphQL `wallTime` (wall-clock microseconds) instead of `cpuTime` — `/usage` endpoint and AE metrics reported CPU milliseconds ~1000x too high (#89)
+- Self-monitor `recordCronExecution()` used read-merge-write on a single KV JSON blob — concurrent midnight crons (daily-rollup + worker-discovery) raced, last writer clobbered the other's timestamp, causing false staleness alerts (#90)
+
+### Changed
+- Cron execution timestamps now stored in per-handler KV keys (`self:v2:cron:{handler}`) instead of a single blob — eliminates read step, no race condition possible
+- `getSelfHealth()` reads per-handler v2 keys in parallel with v1 blob fallback — existing deployments transition automatically on first cron cycle after upgrade
+
 ## [0.3.6] - 2026-03-31
 
 ### Added

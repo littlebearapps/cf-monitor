@@ -80,6 +80,7 @@ export const KV = {
 
 	// Self-monitoring (#44)
 	SELF_CRON_LAST_RUN: 'self:v1:cron:last_run',
+	SELF_CRON_HANDLER: 'self:v2:cron:',       // Per-handler keys (race-safe) — replaces blob
 	SELF_ERROR_COUNT: 'self:v1:error:',
 	SELF_ERRORS_TOTAL: 'self:v1:errors:count:',
 } as const;

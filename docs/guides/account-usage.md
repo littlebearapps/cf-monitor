@@ -8,7 +8,7 @@ The `collect-account-usage` cron runs hourly (`0 * * * *`). It queries the CF Gr
 
 | Service | GraphQL Dataset | Metrics collected |
 |---------|----------------|-------------------|
-| Workers | `workersInvocationsAdaptive` | requests, wallTime (CPU ms) |
+| Workers | `workersInvocationsAdaptive` | requests, cpuTime (µs → converted to ms) |
 | D1 | `d1AnalyticsAdaptiveGroups` | rowsRead, rowsWritten |
 | KV | `kvOperationsAdaptiveGroups` | reads, writes, deletes, lists |
 | R2 | `r2OperationsAdaptiveGroups` | Class A (mutations), Class B (reads) |

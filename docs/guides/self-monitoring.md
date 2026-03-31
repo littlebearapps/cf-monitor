@@ -6,7 +6,7 @@ cf-monitor monitors itself. It tracks cron execution, counts its own errors, wri
 
 Every time cf-monitor runs a handler (tail, scheduled, or fetch), it records:
 
-1. **Cron execution timestamps** — a single KV JSON blob with the last run time, duration, and success status of each cron handler
+1. **Cron execution timestamps** — per-handler KV keys with the last run time, duration, and success status of each cron handler
 2. **Error counts** — per-handler and total daily counters in KV
 3. **AE telemetry** — a data point per handler invocation for historical analysis
 
@@ -137,15 +137,16 @@ GROUP BY handler
 
 ## KV state
 
-Self-monitoring uses three KV key patterns, all with 48-hour TTL:
+Self-monitoring uses these KV key patterns, all with 48-hour TTL:
 
 | Key | Value | Purpose |
 |-----|-------|---------|
-| `self:v1:cron:last_run` | JSON blob | All handler timestamps in a single key |
+| `self:v2:cron:{handler}` | JSON `{lastRun, durationMs, success}` | Per-handler cron timestamp (v0.3.7+) |
+| `self:v1:cron:last_run` | JSON blob | Legacy fallback — read by `getSelfHealth()` for handlers that haven't run since upgrade |
 | `self:v1:error:{handler}:{YYYY-MM-DD}` | Integer string | Per-handler daily error count |
 | `self:v1:errors:count:{YYYY-MM-DD}` | Integer string | Total daily error count |
 
-The single JSON blob for cron timestamps minimises KV writes (1 write per handler execution vs 1 per handler).
+Per-handler keys (v2) eliminate the read-merge-write race condition that occurred when concurrent crons (e.g. daily-rollup + worker-discovery) both wrote to the same blob. Each handler now writes only its own key — no read needed, no race possible. The v1 blob expires naturally via its 48-hour TTL.
 
 ## Manually triggering staleness check
 
@@ -160,8 +161,8 @@ This runs the staleness detection logic immediately and sends a Slack alert if a
 
 Self-monitoring adds approximately:
 
-- **~115 KV writes/day** — cron timestamps + error counters across all handlers
-- **~150 KV reads/day** — health checks and staleness detection
+- **~115 KV writes/day** — cron timestamps (1 write per handler execution, no read needed) + error counters
+- **~150 KV reads/day** — health checks read per-handler keys in parallel (8 reads per `/self-health` call)
 - **~310 AE writes/day** — self-telemetry data points (free tier)
 
 Total: ~265 KV operations/day, well under the 1,000 KV ops/day budget.

@@ -35,7 +35,9 @@ const TTL_48H = 172800; // 48 hours in seconds
 
 /**
  * Record a cron handler's execution timestamp in KV.
- * Read-merge-write a single JSON blob. Fail-open.
+ * Uses per-handler keys (v2) to avoid read-merge-write race conditions
+ * when concurrent handlers (e.g. daily-rollup + worker-discovery) both
+ * finish at the same time. Fail-open.
  */
 export async function recordCronExecution(
 	env: MonitorWorkerEnv,
@@ -44,18 +46,16 @@ export async function recordCronExecution(
 	success: boolean
 ): Promise<void> {
 	try {
-		const existing = await env.CF_MONITOR_KV.get(KV.SELF_CRON_LAST_RUN, 'json') as CronTimestamps | null;
-		const blob: CronTimestamps = existing ?? {};
-
-		blob[handler] = {
+		const entry: CronTimestamps[string] = {
 			lastRun: new Date().toISOString(),
 			durationMs,
 			success,
 		};
 
+		// v2: per-handler key — no read needed, no race condition
 		await env.CF_MONITOR_KV.put(
-			KV.SELF_CRON_LAST_RUN,
-			JSON.stringify(blob),
+			`${KV.SELF_CRON_HANDLER}${handler}`,
+			JSON.stringify(entry),
 			{ expirationTtl: TTL_48H },
 		);
 	} catch (err) {
@@ -125,32 +125,43 @@ export function recordSelfTelemetry(
 
 /**
  * Build a structured self-health status from KV state.
+ * Reads per-handler v2 keys first, falls back to v1 blob for handlers not yet in v2.
  * First boot (no KV state) is reported as healthy with null lastRun.
  */
 export async function getSelfHealth(env: MonitorWorkerEnv): Promise<SelfHealthStatus> {
-	const cronBlob = await env.CF_MONITOR_KV.get(KV.SELF_CRON_LAST_RUN, 'json') as CronTimestamps | null;
+	const handlers = Object.keys(CRON_HANDLER_REGISTRY);
 	const today = new Date().toISOString().slice(0, 10);
 
-	// Read total daily errors
-	const totalRaw = await env.CF_MONITOR_KV.get(`${KV.SELF_ERRORS_TOTAL}${today}`);
+	// Parallel reads: per-handler v2 keys + v1 blob fallback + error counts
+	const [v2Results, v1Blob, totalRaw, ...errorResults] = await Promise.all([
+		Promise.all(handlers.map((h) =>
+			env.CF_MONITOR_KV.get(`${KV.SELF_CRON_HANDLER}${h}`, 'json') as Promise<CronTimestamps[string] | null>
+		)),
+		env.CF_MONITOR_KV.get(KV.SELF_CRON_LAST_RUN, 'json') as Promise<CronTimestamps | null>,
+		env.CF_MONITOR_KV.get(`${KV.SELF_ERRORS_TOTAL}${today}`),
+		...handlers.map((h) => env.CF_MONITOR_KV.get(`${KV.SELF_ERROR_COUNT}${h}:${today}`)),
+	]);
+
 	const todayErrors = parseInt(totalRaw ?? '0', 10);
 
 	// Read per-handler error counts
 	const handlerErrors: Record<string, number> = {};
-	for (const handler of Object.keys(CRON_HANDLER_REGISTRY)) {
-		const raw = await env.CF_MONITOR_KV.get(`${KV.SELF_ERROR_COUNT}${handler}:${today}`);
+	for (let i = 0; i < handlers.length; i++) {
+		const raw = errorResults[i] as string | null;
 		if (raw) {
-			handlerErrors[handler] = parseInt(raw, 10);
+			handlerErrors[handlers[i]] = parseInt(raw, 10);
 		}
 	}
 
-	// Check staleness per handler
+	// Check staleness per handler — prefer v2 per-handler key, fall back to v1 blob
 	const staleCrons: string[] = [];
 	const crons: Record<string, { lastRun: string | null; stale: boolean }> = {};
 	const now = Date.now();
 
-	for (const [handler, config] of Object.entries(CRON_HANDLER_REGISTRY)) {
-		const entry = cronBlob?.[handler];
+	for (let i = 0; i < handlers.length; i++) {
+		const handler = handlers[i];
+		const config = CRON_HANDLER_REGISTRY[handler];
+		const entry = v2Results[i] ?? v1Blob?.[handler] ?? null;
 
 		if (!entry) {
 			// First boot — no record yet, not considered stale

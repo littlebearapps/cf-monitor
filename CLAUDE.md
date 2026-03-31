@@ -179,7 +179,8 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | `config:plan` | Detected CF plan (free/paid), 24hr TTL |
 | `config:billing_period` | Billing period JSON, 32d TTL |
 | `usage:account:{date}` | Daily per-service usage snapshot, 32d TTL |
-| `self:v1:cron:last_run` | Handler execution timestamps (single JSON blob), 48hr TTL |
+| `self:v2:cron:` | Per-handler cron timestamps (v0.3.7+), 48hr TTL |
+| `self:v1:cron:last_run` | Legacy cron blob (v0.3.6 and earlier, read as fallback), 48hr TTL |
 | `self:v1:error:` | Per-handler daily error counts, 48hr TTL |
 | `self:v1:errors:count:` | Total daily error count, 48hr TTL |
 
@@ -271,7 +272,13 @@ Deployed 2026-03-21 on Platform CF account (`55a0bf6d...`):
 
 ## v0.3.2 Features
 
-**#44 — Self-monitoring**: cf-monitor now tracks its own handler execution, errors, and cron staleness. New `self-monitor.ts` module provides fail-open recording functions. All 3 handlers (tail, scheduled, fetch) are instrumented. New `GET /self-health` endpoint returns handler status, error counts, and stale cron detection (200 when healthy, 503 when stale). Staleness alerts via Slack (1/day dedup). Self-telemetry written to AE (`blob2` format: `self:{durationMs}:{1|0}`, `doubles[0]=1`). New KV prefixes: `self:v1:cron:last_run` (handler timestamps as single JSON blob), `self:v1:error:{handler}:{date}` (error counts), `self:v1:errors:count:{date}` (daily total). `CRON_HANDLER_REGISTRY` constant for staleness thresholds. Admin cron trigger: `POST /admin/cron/staleness-check`. Phase 3 (self-capture via error pipeline) deferred to future version.
+**#44 — Self-monitoring**: cf-monitor now tracks its own handler execution, errors, and cron staleness. New `self-monitor.ts` module provides fail-open recording functions. All 3 handlers (tail, scheduled, fetch) are instrumented. New `GET /self-health` endpoint returns handler status, error counts, and stale cron detection (200 when healthy, 503 when stale). Staleness alerts via Slack (1/day dedup). Self-telemetry written to AE (`blob2` format: `self:{durationMs}:{1|0}`, `doubles[0]=1`). KV prefixes: `self:v2:cron:{handler}` (per-handler timestamps, v0.3.7+), `self:v1:cron:last_run` (legacy blob fallback), `self:v1:error:{handler}:{date}` (error counts), `self:v1:errors:count:{date}` (daily total). `CRON_HANDLER_REGISTRY` constant for staleness thresholds. Admin cron trigger: `POST /admin/cron/staleness-check`. Phase 3 (self-capture via error pipeline) deferred to future version.
+
+## Bug Fixes (v0.3.7)
+
+**#89 — cpuMs uses wallTime**: FIXED. Both `collect-account-usage.ts` and `collect-metrics.ts` queried GraphQL `wallTime` (wall-clock µs) instead of `cpuTime`. Made `/usage` endpoint and AE per-worker metrics report CPU values ~1000x too high. Fixed: query `cpuTime`, convert µs→ms via `Math.round(cpuTime / 1000)`.
+
+**#90 — Self-monitor race condition**: FIXED. `recordCronExecution()` used read-merge-write on a single KV blob (`self:v1:cron:last_run`). When concurrent midnight crons (daily-rollup + worker-discovery) raced, last writer clobbered the other's timestamp → false staleness alerts. Fixed: per-handler KV keys (`self:v2:cron:{handler}`), no read needed. `getSelfHealth()` reads v2 keys in parallel with v1 blob fallback for seamless transition.
 
 ## v0.3.6 Runtime Config Resolution
 
