@@ -12,3 +12,10 @@ coverage/
 
 # Claude Code local settings (user-specific)
 .claude/settings.local.json
+
+# macOS
+.DS_Store
+._.DS_Store
+
+# Incoming
+incoming/
