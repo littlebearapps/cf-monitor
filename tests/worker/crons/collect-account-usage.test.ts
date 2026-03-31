@@ -41,7 +41,7 @@ describe('collectAccountUsage', () => {
 		vi.spyOn(globalThis, 'fetch')
 			// Core services — 4 separate queries (Workers, D1, KV, R2)
 			.mockResolvedValueOnce(graphqlResponse({
-				workersInvocationsAdaptive: [{ sum: { requests: 1000, wallTime: 5000 } }],
+				workersInvocationsAdaptive: [{ sum: { requests: 1000, cpuTime: 5000 } }],
 			}))
 			.mockResolvedValueOnce(graphqlResponse({
 				d1AnalyticsAdaptiveGroups: [{ sum: { rowsRead: 50000, rowsWritten: 1000 } }],
@@ -74,7 +74,7 @@ describe('collectAccountUsage', () => {
 		const putCall = (env.CF_MONITOR_KV.put as ReturnType<typeof vi.fn>).mock.calls[0];
 		const snapshot = JSON.parse(putCall[1]);
 		expect(snapshot.disclaimer).toContain('Not authoritative');
-		expect(snapshot.services.workers).toEqual({ requests: 1000, cpuMs: 5000 });
+		expect(snapshot.services.workers).toEqual({ requests: 1000, cpuMs: 5 });
 		expect(snapshot.services.d1).toEqual({ rowsRead: 50000, rowsWritten: 1000 });
 		expect(snapshot.services.kv).toEqual({ reads: 3000, writes: 100, deletes: 2, lists: 5 });
 		expect(snapshot.services.durableObjects).toEqual({ requests: 200, storedBytes: 0 });
@@ -85,7 +85,7 @@ describe('collectAccountUsage', () => {
 		vi.spyOn(globalThis, 'fetch')
 			// Workers succeeds
 			.mockResolvedValueOnce(graphqlResponse({
-				workersInvocationsAdaptive: [{ sum: { requests: 500, wallTime: 1000 } }],
+				workersInvocationsAdaptive: [{ sum: { requests: 500, cpuTime: 1000 } }],
 			}))
 			// D1 fails
 			.mockResolvedValueOnce(new Response('Internal Server Error', { status: 500 }))
@@ -102,7 +102,7 @@ describe('collectAccountUsage', () => {
 		expect(env.CF_MONITOR_KV.put).toHaveBeenCalled();
 		const putCall = (env.CF_MONITOR_KV.put as ReturnType<typeof vi.fn>).mock.calls[0];
 		const snapshot = JSON.parse(putCall[1]);
-		expect(snapshot.services.workers).toEqual({ requests: 500, cpuMs: 1000 });
+		expect(snapshot.services.workers).toEqual({ requests: 500, cpuMs: 1 });
 	});
 
 	it('handles empty results for unused services', async () => {
@@ -128,8 +128,8 @@ describe('collectAccountUsage', () => {
 			// Workers with multiple entries
 			.mockResolvedValueOnce(graphqlResponse({
 				workersInvocationsAdaptive: [
-					{ sum: { requests: 300, wallTime: 1000 } },
-					{ sum: { requests: 700, wallTime: 2000 } },
+					{ sum: { requests: 300, cpuTime: 1000 } },
+					{ sum: { requests: 700, cpuTime: 2000 } },
 				],
 			}))
 			// D1, KV, R2 empty
@@ -143,6 +143,6 @@ describe('collectAccountUsage', () => {
 
 		const putCall = (env.CF_MONITOR_KV.put as ReturnType<typeof vi.fn>).mock.calls[0];
 		const snapshot = JSON.parse(putCall[1]);
-		expect(snapshot.services.workers).toEqual({ requests: 1000, cpuMs: 3000 });
+		expect(snapshot.services.workers).toEqual({ requests: 1000, cpuMs: 3 });
 	});
 });

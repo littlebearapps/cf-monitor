@@ -29,30 +29,31 @@ afterEach(() => {
 // =============================================================================
 
 describe('recordCronExecution', () => {
-	it('writes handler timestamp to KV blob', async () => {
+	it('writes handler timestamp to per-handler KV key', async () => {
 		const { recordCronExecution } = await import('../../src/worker/self-monitor.js');
 
 		await recordCronExecution(env, 'gap-detection', 123, true);
 
-		const raw = await env.CF_MONITOR_KV.get(KV.SELF_CRON_LAST_RUN, 'json') as Record<string, unknown>;
+		const raw = await env.CF_MONITOR_KV.get(`${KV.SELF_CRON_HANDLER}gap-detection`, 'json') as Record<string, unknown>;
 		expect(raw).not.toBeNull();
-		expect(raw['gap-detection']).toMatchObject({
+		expect(raw).toMatchObject({
 			durationMs: 123,
 			success: true,
 		});
-		expect(raw['gap-detection']).toHaveProperty('lastRun');
+		expect(raw).toHaveProperty('lastRun');
 	});
 
-	it('merges multiple handler entries', async () => {
+	it('writes separate keys for different handlers (no race condition)', async () => {
 		const { recordCronExecution } = await import('../../src/worker/self-monitor.js');
 
 		await recordCronExecution(env, 'gap-detection', 100, true);
 		await recordCronExecution(env, 'budget-check', 200, false);
 
-		const raw = await env.CF_MONITOR_KV.get(KV.SELF_CRON_LAST_RUN, 'json') as Record<string, unknown>;
-		expect(raw).toHaveProperty('gap-detection');
-		expect(raw).toHaveProperty('budget-check');
-		expect((raw['budget-check'] as Record<string, unknown>).success).toBe(false);
+		const gd = await env.CF_MONITOR_KV.get(`${KV.SELF_CRON_HANDLER}gap-detection`, 'json') as Record<string, unknown>;
+		const bc = await env.CF_MONITOR_KV.get(`${KV.SELF_CRON_HANDLER}budget-check`, 'json') as Record<string, unknown>;
+		expect(gd).not.toBeNull();
+		expect(bc).not.toBeNull();
+		expect((bc as Record<string, unknown>).success).toBe(false);
 	});
 
 	it('overwrites previous entry for same handler', async () => {
@@ -61,10 +62,9 @@ describe('recordCronExecution', () => {
 		await recordCronExecution(env, 'gap-detection', 100, true);
 		await recordCronExecution(env, 'gap-detection', 500, false);
 
-		const raw = await env.CF_MONITOR_KV.get(KV.SELF_CRON_LAST_RUN, 'json') as Record<string, unknown>;
-		const entry = raw['gap-detection'] as Record<string, unknown>;
-		expect(entry.durationMs).toBe(500);
-		expect(entry.success).toBe(false);
+		const raw = await env.CF_MONITOR_KV.get(`${KV.SELF_CRON_HANDLER}gap-detection`, 'json') as Record<string, unknown>;
+		expect(raw.durationMs).toBe(500);
+		expect(raw.success).toBe(false);
 	});
 
 	it('sets 48hr TTL on KV key', async () => {
@@ -74,7 +74,7 @@ describe('recordCronExecution', () => {
 		await recordCronExecution(env, 'gap-detection', 100, true);
 
 		expect(putSpy).toHaveBeenCalledWith(
-			KV.SELF_CRON_LAST_RUN,
+			`${KV.SELF_CRON_HANDLER}gap-detection`,
 			expect.any(String),
 			{ expirationTtl: 172800 },
 		);
@@ -250,16 +250,15 @@ describe('getSelfHealth', () => {
 	});
 
 	it('detects stale cron handlers', async () => {
-		const { getSelfHealth, recordCronExecution } = await import('../../src/worker/self-monitor.js');
+		const { getSelfHealth } = await import('../../src/worker/self-monitor.js');
 
-		// Record a run for gap-detection in the far past
-		await recordCronExecution(env, 'gap-detection', 100, true);
-
-		// Manually overwrite KV to make it stale
-		const blob = await env.CF_MONITOR_KV.get(KV.SELF_CRON_LAST_RUN, 'json') as Record<string, unknown>;
+		// Manually write a stale per-handler key
 		const staleTime = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 60 mins ago (maxStale = 45)
-		(blob['gap-detection'] as Record<string, unknown>).lastRun = staleTime;
-		await env.CF_MONITOR_KV.put(KV.SELF_CRON_LAST_RUN, JSON.stringify(blob), { expirationTtl: 172800 });
+		await env.CF_MONITOR_KV.put(
+			`${KV.SELF_CRON_HANDLER}gap-detection`,
+			JSON.stringify({ lastRun: staleTime, durationMs: 100, success: true }),
+			{ expirationTtl: 172800 },
+		);
 
 		const health = await getSelfHealth(env);
 		expect(health.staleCrons).toContain('gap-detection');
@@ -295,11 +294,13 @@ describe('getSelfHealth', () => {
 			await recordCronExecution(env, handler, 100, true);
 		}
 
-		// Make one stale
-		const blob = await env.CF_MONITOR_KV.get(KV.SELF_CRON_LAST_RUN, 'json') as Record<string, unknown>;
+		// Make one stale via per-handler key
 		const staleTime = new Date(Date.now() - 200 * 60 * 1000).toISOString(); // 200 mins (hourly maxStale = 150)
-		(blob['collect-metrics'] as Record<string, unknown>).lastRun = staleTime;
-		await env.CF_MONITOR_KV.put(KV.SELF_CRON_LAST_RUN, JSON.stringify(blob), { expirationTtl: 172800 });
+		await env.CF_MONITOR_KV.put(
+			`${KV.SELF_CRON_HANDLER}collect-metrics`,
+			JSON.stringify({ lastRun: staleTime, durationMs: 100, success: true }),
+			{ expirationTtl: 172800 },
+		);
 
 		const health = await getSelfHealth(env);
 		expect(health.healthy).toBe(false);
@@ -335,13 +336,15 @@ describe('checkCronStaleness', () => {
 	});
 
 	it('sends alert when crons are stale', async () => {
-		const { checkCronStaleness, recordCronExecution } = await import('../../src/worker/self-monitor.js');
+		const { checkCronStaleness } = await import('../../src/worker/self-monitor.js');
 
-		// Record a run, then make it stale
-		await recordCronExecution(env, 'gap-detection', 100, true);
-		const blob = await env.CF_MONITOR_KV.get(KV.SELF_CRON_LAST_RUN, 'json') as Record<string, unknown>;
-		(blob['gap-detection'] as Record<string, unknown>).lastRun = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-		await env.CF_MONITOR_KV.put(KV.SELF_CRON_LAST_RUN, JSON.stringify(blob), { expirationTtl: 172800 });
+		// Write a stale per-handler key
+		const staleTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+		await env.CF_MONITOR_KV.put(
+			`${KV.SELF_CRON_HANDLER}gap-detection`,
+			JSON.stringify({ lastRun: staleTime, durationMs: 100, success: true }),
+			{ expirationTtl: 172800 },
+		);
 
 		await checkCronStaleness(env);
 
@@ -376,16 +379,20 @@ describe('checkCronStaleness', () => {
 	});
 
 	it('includes stale handler names in alert message', async () => {
-		const { checkCronStaleness, recordCronExecution } = await import('../../src/worker/self-monitor.js');
+		const { checkCronStaleness } = await import('../../src/worker/self-monitor.js');
 
-		// Make two handlers stale
-		await recordCronExecution(env, 'gap-detection', 100, true);
-		await recordCronExecution(env, 'cost-spike', 100, true);
-		const blob = await env.CF_MONITOR_KV.get(KV.SELF_CRON_LAST_RUN, 'json') as Record<string, unknown>;
+		// Make two handlers stale via per-handler keys
 		const staleTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-		(blob['gap-detection'] as Record<string, unknown>).lastRun = staleTime;
-		(blob['cost-spike'] as Record<string, unknown>).lastRun = staleTime;
-		await env.CF_MONITOR_KV.put(KV.SELF_CRON_LAST_RUN, JSON.stringify(blob), { expirationTtl: 172800 });
+		await env.CF_MONITOR_KV.put(
+			`${KV.SELF_CRON_HANDLER}gap-detection`,
+			JSON.stringify({ lastRun: staleTime, durationMs: 100, success: true }),
+			{ expirationTtl: 172800 },
+		);
+		await env.CF_MONITOR_KV.put(
+			`${KV.SELF_CRON_HANDLER}cost-spike`,
+			JSON.stringify({ lastRun: staleTime, durationMs: 100, success: true }),
+			{ expirationTtl: 172800 },
+		);
 
 		await checkCronStaleness(env);
 
