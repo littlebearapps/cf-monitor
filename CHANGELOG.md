@@ -6,6 +6,8 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 
 ## [0.3.7] - 2026-03-31
 
+## [0.3.7] - 2026-03-31
+
 ### Fixed
 - Account usage and per-worker metrics queried GraphQL `wallTime` (wall-clock microseconds) instead of `cpuTime` — `/usage` endpoint and AE metrics reported CPU milliseconds ~1000x too high (#89)
 - Self-monitor `recordCronExecution()` used read-merge-write on a single KV JSON blob — concurrent midnight crons (daily-rollup + worker-discovery) raced, last writer clobbered the other's timestamp, causing false staleness alerts (#90)
@@ -203,7 +205,8 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
-[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.6...HEAD
+[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.7...HEAD
+[0.3.7]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.3...v0.3.4
