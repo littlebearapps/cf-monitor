@@ -10,23 +10,32 @@ cf-monitor wraps Cloudflare Workers with a single `monitor()` call, tracks every
 - [Getting Started](https://github.com/littlebearapps/cf-monitor/blob/main/docs/getting-started.md): Step-by-step setup from install to verified monitoring
 - [Configuration Reference](https://github.com/littlebearapps/cf-monitor/blob/main/docs/configuration.md): All cf-monitor.yaml and MonitorConfig SDK options
 - [Security](https://github.com/littlebearapps/cf-monitor/blob/main/docs/security.md): Admin auth, secrets, threat model, data exposure
-- [Troubleshooting](https://github.com/littlebearapps/cf-monitor/blob/main/docs/troubleshooting.md): 14 common issues with solutions
+- [Troubleshooting](https://github.com/littlebearapps/cf-monitor/blob/main/docs/troubleshooting.md): 16 common issues with solutions
 - [Changelog](https://github.com/littlebearapps/cf-monitor/blob/main/CHANGELOG.md): Version history v0.1.0 to v0.3.7
 - [Contributing](https://github.com/littlebearapps/cf-monitor/blob/main/CONTRIBUTING.md): Development setup and conventions
 
 ## Guides
 
-- [Error Collection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/error-collection.md): Fingerprinting, dedup, GitHub issues
-- [Budgets & Circuit Breakers](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/budgets-and-circuit-breakers.md): 4 layers of cost protection
+- [Error Collection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/error-collection.md): Prerequisites, fingerprinting, dedup, GitHub issues
+- [Budgets & Circuit Breakers](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/budgets-and-circuit-breakers.md): 4 layers of cost protection, auto-seeding
 - [Cost Protection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/cost-protection.md): The $4,868 billing incident and prevention
-- [Worker Discovery](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/worker-discovery.md): Auto-discovery, exclude patterns
+- [Cost Spike Detection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/cost-spike-detection.md): Hourly spikes vs 24h baseline, Slack alerts
+- [Worker Discovery](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/worker-discovery.md): Auto-discovery, exclude patterns, daily cadence
 - [Slack Alerts](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/slack-alerts.md): Alert types, dedup, webhook setup
-- [Plan Detection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/plan-detection.md): Free vs Paid, billing period
+- [Plan Detection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/plan-detection.md): Free vs Paid, billing period, permissions
 - [Account Usage](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/account-usage.md): GraphQL queries, services, limitations
 - [Gap Detection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/gap-detection.md): Coverage monitoring
+- [Synthetic Health Checks](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/synthetic-health.md): Hourly CB pipeline self-test
 - [Self-Monitoring](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/self-monitoring.md): Cron tracking, error counts, debugging cf-monitor
 
 ## How-to
 
 - [GitHub Webhooks](https://github.com/littlebearapps/cf-monitor/blob/main/docs/how-to/github-webhooks.md): Bidirectional issue sync setup
+- [Gatus Heartbeat](https://github.com/littlebearapps/cf-monitor/blob/main/docs/how-to/gatus-heartbeat.md): External uptime monitor for cf-monitor crons
 - [Custom Feature IDs](https://github.com/littlebearapps/cf-monitor/blob/main/docs/how-to/custom-feature-ids.md): featureId, featurePrefix, features map
+
+## Stubs & Partial Features (v0.3.7)
+
+- AI features (pattern discovery, health reports, coverage auditor) — `src/worker/optional/*.ts` are stubs. Enabling `ai.*` flags is a no-op. Issues #8, #9, #10.
+- `transient_patterns:` YAML key — parses but matcher only consults built-ins. Issue #92.
+- `monitoring.spike_threshold` YAML key — schema validates but hardcoded to 2.0 in source.

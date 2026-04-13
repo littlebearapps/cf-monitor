@@ -201,7 +201,7 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | Budget enforcement | `src/worker/crons/budget-check.ts` — plan-aware hourly CB enforcement |
 | Account detection | `src/worker/account/subscriptions.ts` — plan detection, billing period, KV-cached |
 | Plan allowances | `src/worker/account/plan-allowances.ts` — free/paid allowance tables |
-| Usage collection | `src/worker/crons/collect-account-usage.ts` — hourly GraphQL for 9 services |
+| Usage collection | `src/worker/crons/collect-account-usage.ts` — hourly GraphQL for 5 services (Workers, D1, KV, R2, DO) |
 | Self-monitoring | `src/worker/self-monitor.ts` — cron tracking, error counts, AE telemetry, /self-health, staleness |
 | CLI entry | `src/cli/index.ts` — commander setup |
 
@@ -321,9 +321,24 @@ Full security audit with 9 fixes:
 
 ---
 
+## Stubs & Partial Features (v0.3.7)
+
+Config surfaces exist for these, but the wiring is incomplete. If you're asked to use any of these, implement the missing integration first and flag the gap to the user:
+
+| Feature | Config surface | Reality |
+|---------|----------------|---------|
+| AI pattern discovery | `ai.pattern_discovery` in `cf-monitor.yaml` | `src/worker/optional/pattern-discovery.ts` is a `console.log()` TODO stub. Issue #8. |
+| AI health reports | `ai.health_reports` | `src/worker/optional/health-reporter.ts` is a stub. Issue #9. |
+| AI coverage auditor | `ai.coverage_auditor` | `src/worker/optional/coverage-auditor.ts` is a stub. Issue #10. |
+| Custom transient patterns | `transient_patterns:` array | Parses to `env._customTransientPatterns` but `src/worker/errors/patterns.ts` matcher only consults the 8 built-ins. Issue #92. |
+| Configurable spike threshold | `monitoring.spike_threshold` | Schema validates `≥ 1.5`, but `src/worker/crons/cost-spike.ts:7` hardcodes `const SPIKE_THRESHOLD = 2.0`. |
+
+Docs reflect these gaps as of 2026-04-13 — see `README.md`, `docs/configuration.md`, `docs/guides/error-collection.md`, `docs/guides/cost-spike-detection.md`.
+
 ## Open Work
 
 See https://github.com/littlebearapps/cf-monitor/issues for planned features.
 
 **Remaining features:**
 - #8, #9, #10 — AI optional features (pattern discovery, health reports, coverage auditor) — stubs created in `src/worker/optional/`
+- #92 — Wire custom `transient_patterns` into `matchTransientPattern()`

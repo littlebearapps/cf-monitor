@@ -5,11 +5,12 @@
 ## Quick Commands
 
 ```bash
-npm test                    # 290 unit tests (vitest)
+npm test                    # 316 unit tests (vitest)
 npm run test:integration    # 53 integration tests (deploys to CF, needs credentials)
 npm run typecheck           # TypeScript strict (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
 npm pack --dry-run          # Verify package contents
+npm run release -- <version>  # Bump version across 6 files, commit, tag, push
 ```
 
 ## Project Structure
@@ -32,15 +33,16 @@ cf-monitor/
       scheduled-handler.ts # Cron multiplexer
       fetch-handler.ts    # API endpoints
       self-monitor.ts     # Self-monitoring: cron tracking, error counts
-      crons/              # 8 cron handlers (metrics, budgets, gaps, spikes, discovery, etc.)
+      crons/              # 8 cron handlers: budget-check, collect-metrics, collect-account-usage, cost-spike, daily-rollup, gap-detection, synthetic-health, worker-discovery
       errors/             # Fingerprinting, patterns, GitHub issue CRUD
       alerts/             # Slack alerts with dedup
       account/            # Plan detection, billing period, allowances
+      optional/           # STUB handlers for AI features (pattern-discovery, health-reporter, coverage-auditor) — not yet implemented in v0.3.7
     cli/                  # CLI: npx cf-monitor <command>
-      commands/           # 10 commands (init, deploy, wire, status, coverage, etc.)
-  tests/                  # Unit + integration tests
+      commands/           # 9 commands: init, deploy, wire, status, coverage, secret, config-sync, upgrade, migrate, usage
+  tests/                  # 316 unit tests + 53 integration tests (10 files)
   worker/                 # Pre-built entry for wrangler deploy
-  docs/                   # 17 documentation files
+  docs/                   # 20 documentation files (getting-started, configuration, security, troubleshooting + 10 guides + 3 how-to)
 ```
 
 ## Key Conventions
@@ -51,6 +53,16 @@ cf-monitor/
 - **KV versioning**: Prefixes include version (e.g. `cb:v1:`) for safe migration
 - **No D1**: Analytics Engine for metrics, KV for state. Zero database migrations.
 - **Australian English**: realise, colour, licence
+
+## Stubs & Partial Features (v0.3.7)
+
+Do not assume these work end-to-end:
+
+- `src/worker/optional/pattern-discovery.ts`, `health-reporter.ts`, `coverage-auditor.ts` — stubs. Enabling `ai.*` flags in `cf-monitor.yaml` is a no-op. Tracked: #8, #9, #10.
+- `transient_patterns:` YAML key — parsed and loaded into `env._customTransientPatterns`, but `src/worker/errors/patterns.ts` `matchTransientPattern()` only consults built-ins. Tracked: #92.
+- `monitoring.spike_threshold` YAML key — schema validates but `src/worker/crons/cost-spike.ts:7` hardcodes `2.0`.
+
+If you're asked to use any of these, implement the missing wiring first or flag the stub to the user.
 
 ## Architecture
 
