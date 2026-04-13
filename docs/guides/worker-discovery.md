@@ -1,6 +1,8 @@
 # Worker Discovery
 
-cf-monitor auto-discovers all workers on your Cloudflare account — no manual registry needed. When you add a new worker, cf-monitor finds it automatically.
+cf-monitor auto-discovers all workers on your Cloudflare account — no manual registry needed.
+
+> ⚠️ **Discovery is daily, not real-time.** The cron runs once every 24 hours at **midnight UTC**. A worker you deploy at 00:05 UTC won't be visible to cf-monitor until ~24 hours later unless you manually trigger discovery. "Auto-discovery" means you don't maintain a registry — it does not mean instant detection. Trigger manually after deploys if you want immediate visibility: `POST /admin/cron/worker-discovery`.
 
 ## How it works
 

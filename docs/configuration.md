@@ -56,8 +56,12 @@ monitoring:
   gap_detection_minutes: 15                 # How often to check for gaps (5-60, default 15)
   heartbeat_url: "https://..."              # Gatus/uptime monitor heartbeat URL
   heartbeat_token: $GATUS_TOKEN             # Bearer token for heartbeat
-  spike_threshold: 2.0                      # Cost spike multiplier (>1.5, default 2.0)
+  spike_threshold: 2.0                      # ⚠️ Not yet wired in v0.3.7 — see below
 ```
+
+> 🚧 **`spike_threshold` is config-only in v0.3.7.** The YAML key parses and the schema validates, but `src/worker/crons/cost-spike.ts` hardcodes the threshold to `2.0`. Values you set here are ignored until this is wired up. See [Cost spike detection](./guides/cost-spike-detection.md) for details.
+
+Also see [Gatus heartbeat](./how-to/gatus-heartbeat.md) for `heartbeat_url` / `heartbeat_token` setup end-to-end.
 
 ### Plan detection (automatic)
 
@@ -119,16 +123,32 @@ exclude:
 
 ### ai (optional)
 
+> 🚧 **Not yet implemented in v0.3.7.** The keys below parse and validate, but the cron handlers in `src/worker/optional/` are stubs that log "TODO" and return. Enabling these flags is a no-op. Tracked: [#8](https://github.com/littlebearapps/cf-monitor/issues/8) pattern discovery, [#9](https://github.com/littlebearapps/cf-monitor/issues/9) health reports, [#10](https://github.com/littlebearapps/cf-monitor/issues/10) coverage auditor.
+
 ```yaml
 ai:
-  enabled: false                            # Master switch for AI features
-  pattern_discovery: false                  # AI error pattern detection
-  health_reports: false                     # Natural language health summaries
-  coverage_auditor: false                   # AI integration scoring
-  model: "deepseek-chat"                    # AI model to use
+  enabled: false                            # Master switch for AI features (no-op in v0.3.7)
+  pattern_discovery: false                  # AI error pattern detection (stub)
+  health_reports: false                     # Natural language health summaries (stub)
+  coverage_auditor: false                   # AI integration scoring (stub)
+  model: "deepseek-chat"                    # AI model to use (unused until features ship)
 ```
 
-AI features are disabled by default and require explicit opt-in.
+AI features are disabled by default and will require explicit opt-in once implemented.
+
+### transient_patterns (optional)
+
+> 🚧 **Configured but not yet applied in v0.3.7.** The YAML key is parsed and the values are loaded into `env._customTransientPatterns`, but `matchTransientPattern()` in `src/worker/errors/patterns.ts` only checks the 8 built-in patterns — user-supplied patterns are silently ignored. Tracked in [#92](https://github.com/littlebearapps/cf-monitor/issues/92). The 8 built-in patterns (`rate-limited`, `timeout`, `quota-exhausted`, `connection-refused`, `dns-failure`, `service-unavailable`, `cf-internal`) are active and work correctly.
+
+```yaml
+transient_patterns:
+  - name: "custom-gateway-timeout"
+    match: "504 gateway timeout"
+  - name: "db-connection-pool-exhausted"
+    match: "connection pool"
+```
+
+Once wired up, matching errors will be deduplicated to one GitHub issue per category per day, as with the built-ins.
 
 ---
 
@@ -197,6 +217,22 @@ monitor({
 ```
 
 When a limit is exceeded, `RequestBudgetExceededError` is thrown immediately. This is the first line of defence — it stops runaway loops on the very first request.
+
+#### Which limits have defaults?
+
+Only the 7 metrics listed in the table above have built-in defaults (from `DEFAULT_REQUEST_LIMITS` in `src/constants.ts`). The remaining `RequestLimits` fields accept values but are **unlimited by default**:
+
+| Field | Default |
+|-------|---------|
+| `d1Writes`, `d1Reads`, `kvWrites`, `kvReads`, `aiRequests`, `r2ClassA`, `queueMessages` | See table above |
+| `d1RowsRead`, `d1RowsWritten` | ⚠️ Unlimited |
+| `kvDeletes`, `kvLists` | ⚠️ Unlimited |
+| `aiNeurons` | ⚠️ Unlimited |
+| `vectorizeQueries`, `vectorizeInserts` | ⚠️ Unlimited |
+| `r2ClassB` | ⚠️ Unlimited |
+| `doRequests`, `cpuMs` | ⚠️ Unlimited |
+
+> 💡 **Practical implication.** A single invocation can, for example, read 10 million D1 rows (via a handful of large `SELECT` statements that stay under `d1Reads: 5000`) before the hourly budget cron catches up. If your worker does bulk row reads, set `d1RowsRead` explicitly. Same for heavy AI workloads (`aiNeurons`), Vectorize queries, DO traffic, and CPU-bound handlers.
 
 ### Error and CB handlers
 

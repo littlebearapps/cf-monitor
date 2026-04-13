@@ -92,6 +92,8 @@ Plan detection uses the CF Subscriptions API. If your token lacks `Account Setti
 
 The auto-seeding runs during the first hourly budget check when no `budget:config:*` keys exist in KV. It discovers active features from usage data, writes per-feature configs with 25-hour TTL, and creates an `__account__` fallback that applies to any feature without its own config. A seed flag (24-hour TTL) prevents re-seeding every hour.
 
+> ⚠️ **Auto-seeded configs expire.** The per-feature `budget:config:*` entries written by auto-seeding have a **25-hour TTL**. If you never run `npx cf-monitor config sync`, the keys expire ~daily and are re-seeded on the next hourly cron (the seed flag lets them re-seed). This is safe — limits don't change between seedings as long as your CF plan is stable — but it means nothing in KV is durable until you commit your own budgets. For production, run `config sync` once after deploy with a `budgets:` block in `cf-monitor.yaml` so limits are explicit and permanent.
+
 If you run `npx cf-monitor config sync` with your own budgets, they take permanent precedence over auto-seeded defaults.
 
 ## Monthly budgets (Layer 2b)
@@ -136,6 +138,8 @@ Circuit breakers reset automatically when their KV TTL expires (default: 1 hour)
 
 When a CB is reset, cf-monitor writes `'GO'` with a 60-second TTL instead of deleting the key. This forces KV cache invalidation across Cloudflare's edge network, which is faster than waiting for a delete to propagate (up to 60 seconds of eventual consistency).
 
+> 💡 **Don't reset with `kv:key delete`.** If you manually "reset" a CB by deleting its KV key (e.g. `wrangler kv key delete "cb:v1:feature:my-feature"`), edges that have cached the `STOP` value will continue to serve 503s for up to ~60 seconds. Always prefer `POST /admin/cb/reset` (which writes `GO` + 60s TTL) or let the TTL expire naturally.
+
 ### Custom CB response
 
 ```typescript
@@ -152,27 +156,22 @@ monitor({
 
 ## Cost spike detection (Layer 4)
 
-The 15-minute cron (`*/15 * * * *`) compares current hourly costs against a 24-hour baseline. If any metric exceeds the configured threshold (default: 200%), a Slack alert is sent.
+The 15-minute cron (`*/15 * * * *`) compares current hourly costs against a 24-hour baseline. If any metric exceeds 200% of the baseline, a Slack alert is sent.
 
 This catches anomalies that fall within budget limits but are still unusual — like a worker suddenly doing 10x more D1 reads than normal.
 
-Configure the threshold in `cf-monitor.yaml`:
-
-```yaml
-monitoring:
-  spike_threshold: 2.0    # 200% of baseline (default)
-```
+> 🚧 **The threshold is not yet configurable in v0.3.7.** `cf-monitor.yaml` accepts `monitoring.spike_threshold`, but `src/worker/crons/cost-spike.ts` hardcodes it to `2.0`. See [Cost spike detection](./cost-spike-detection.md) for full details, tuning workarounds, and alert shape.
 
 ## Synthetic health checks (Validation layer)
 
 Every hour, cf-monitor runs a synthetic health check that validates the entire CB pipeline:
 
-1. **Trip** a test circuit breaker (`platform:test:synthetic-cb`)
+1. **Trip** a test circuit breaker (`cf-monitor:test:synthetic-cb`)
 2. **Verify** it blocks (reads `STOP`)
 3. **Reset** the circuit breaker
 4. **Verify** it passes (reads `GO` or null)
 
-If any step fails, it means the CB pipeline is broken and you'd find out before a real budget event.
+If any step fails, it means the CB pipeline is broken and you'd find out before a real budget event. See [Synthetic health checks](./synthetic-health.md) for details on how to read the results and diagnose failures.
 
 ## Admin endpoints
 

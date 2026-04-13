@@ -74,9 +74,11 @@ export default monitor({
 
 That's it. Worker name, feature IDs, bindings, and budgets are all auto-detected.
 
+> **Next step for error notifications:** the three commands above enable error *capture* (visible via `GET /errors`), but don't yet create GitHub issues or Slack alerts. To wire those up, continue to [getting-started.md Step 7 — Configure alerts](./docs/getting-started.md#step-7-configure-alerts-optional).
+
 ## 🎯 Features
 
-- 🐛 **Error collection** — tail worker captures errors from every worker, deduplicates via fingerprint, creates GitHub issues with P0–P4 priority labels
+- 🐛 **Error collection** — tail worker captures errors from every worker, deduplicates via fingerprint, and (when `GITHUB_TOKEN` is configured) creates GitHub issues with P0–P4 priority labels. Without GitHub configured, errors are still captured to Analytics Engine and surfaced via `GET /errors`
 - 💰 **Feature budgets** — per-feature daily and monthly limits with automatic circuit breakers. Warned at 70%, stopped at 100%
 - 🔴 **Circuit breakers** — three-tier kill switches (feature, account, global) via KV. Auto-reset after configurable TTL
 - 🛡️ **Cost protection** — per-invocation limits prevent runaway loops. Catches the $5K bug on the first request
@@ -92,9 +94,11 @@ That's it. Worker name, feature IDs, bindings, and budgets are all auto-detected
 
 ### Optional (AI-powered, disabled by default)
 
-- 🤖 **Pattern discovery** — AI detection of transient error patterns (opt-in)
-- 📝 **Health reports** — natural language account health summaries (opt-in)
-- 🔬 **Coverage auditor** — AI scoring of integration quality (opt-in)
+> 🚧 **Not yet implemented in v0.3.7.** The YAML keys exist and parse, but the cron handlers are stubs (`src/worker/optional/*.ts`). Enabling them is a no-op. Tracked in issues [#8](https://github.com/littlebearapps/cf-monitor/issues/8), [#9](https://github.com/littlebearapps/cf-monitor/issues/9), [#10](https://github.com/littlebearapps/cf-monitor/issues/10).
+
+- 🤖 **Pattern discovery** — AI detection of transient error patterns (planned)
+- 📝 **Health reports** — natural language account health summaries (planned)
+- 🔬 **Coverage auditor** — AI scoring of integration quality (planned)
 
 ## 🔧 SDK API
 
@@ -289,19 +293,22 @@ See the [changelog](./CHANGELOG.md) for version history.
 
 ### Guides
 
-- [Error collection](./docs/guides/error-collection.md) — fingerprinting, dedup, GitHub issues
-- [Budgets & circuit breakers](./docs/guides/budgets-and-circuit-breakers.md) — 4 layers of cost protection
+- [Error collection](./docs/guides/error-collection.md) — fingerprinting, dedup, GitHub issues, prerequisites
+- [Budgets & circuit breakers](./docs/guides/budgets-and-circuit-breakers.md) — 4 layers of cost protection, auto-seeding
 - [Cost protection](./docs/guides/cost-protection.md) — the $4,868 story and how cf-monitor prevents it
-- [Worker discovery](./docs/guides/worker-discovery.md) — auto-discovery, exclude patterns
+- [Cost spike detection](./docs/guides/cost-spike-detection.md) — hourly spikes vs 24h baseline, Slack alerts
+- [Worker discovery](./docs/guides/worker-discovery.md) — auto-discovery, exclude patterns, daily cadence
 - [Slack alerts](./docs/guides/slack-alerts.md) — alert types, dedup, webhook setup
 - [Plan detection](./docs/guides/plan-detection.md) — Free vs Paid, billing period, permissions
 - [Account usage](./docs/guides/account-usage.md) — GraphQL queries, services, limitations
 - [Gap detection](./docs/guides/gap-detection.md) — coverage monitoring
+- [Synthetic health checks](./docs/guides/synthetic-health.md) — hourly CB pipeline self-test
 - [Self-monitoring](./docs/guides/self-monitoring.md) — cron tracking, error counts, debugging cf-monitor itself
 
 ### How-to
 
 - [GitHub webhooks](./docs/how-to/github-webhooks.md) — bidirectional issue sync setup
+- [Gatus heartbeat](./docs/how-to/gatus-heartbeat.md) — external uptime monitor for cf-monitor crons
 - [Custom feature IDs](./docs/how-to/custom-feature-ids.md) — featureId, featurePrefix, features map
 
 ### Security & Reference

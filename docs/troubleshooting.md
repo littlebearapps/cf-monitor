@@ -46,9 +46,11 @@ Common issues and their solutions when using cf-monitor.
      -d '{"featureId": "your-feature-id"}'
    ```
 
-3. **Monthly budget also tripped** — daily budgets reset via TTL, but if the monthly budget is also exceeded, the CB will be re-tripped on the next hourly check. Increase the monthly budget or wait for the month to roll over.
+3. **You used `wrangler kv key delete` to reset** — this breaks the fast-propagation pattern. cf-monitor resets a CB by writing `'GO'` with a 60-second TTL (not by deleting the key), which forces KV edge cache invalidation. If you `delete` the key instead, edges that cached `STOP` keep serving 503s for up to ~60 seconds. Always use `POST /admin/cb/reset`.
 
-4. **Account-level CB** — check if the account CB is active:
+4. **Monthly budget also tripped** — daily budgets reset via TTL, but if the monthly budget is also exceeded, the CB will be re-tripped on the next hourly check. Increase the monthly budget or wait for the month to roll over.
+
+5. **Account-level CB** — check if the account CB is active:
    ```bash
    curl https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/status
    ```
@@ -228,9 +230,56 @@ Common issues and their solutions when using cf-monitor.
 
 **Causes and fixes**:
 
-1. **Token lacks billing permission** — plan detection requires the `Account Settings: Read` permission (`#billing:read`) on your API token. Without it, cf-monitor conservatively defaults to "paid" (which means higher budget limits — safe but less protective for free accounts). Add the permission to your token for accurate detection.
+1. **Token lacks billing permission** — plan detection requires the `Account Settings: Read` permission (`#billing:read`) on your API token. Without it, cf-monitor conservatively defaults to "paid" (which means higher budget limits — safe for Paid but effectively leaves Free accounts under-protected since Paid limits are ~10× Free limits). Add the permission to your token for accurate detection.
 
-2. **Cached result** — the detected plan is cached in KV for 24 hours. If you recently upgraded/downgraded your plan, wait for cache expiry or delete the `config:plan` KV key manually.
+2. **Cached result** — the detected plan is cached in KV for 24 hours. If you recently upgraded/downgraded your plan, wait for cache expiry or delete the `config:plan` KV key manually:
+   ```bash
+   wrangler kv key delete "config:plan" --namespace-id YOUR_KV_NAMESPACE_ID
+   ```
+
+## Billing period hasn't updated after plan change
+
+**Symptoms**: `GET /plan` shows stale `billingPeriod` dates (e.g. days that have already passed, or the wrong day-of-month after changing your billing cycle). Monthly budget KV keys use the old period.
+
+**Cause**: `config:billing_period` is cached in KV for **32 days**. Plan upgrades, downgrades, or billing-day changes don't force an immediate refresh — the cache silently ages out up to a month later.
+
+**Fix**: delete the cache key to force re-detection on the next budget-check cron:
+
+```bash
+wrangler kv key delete "config:billing_period" --namespace-id YOUR_KV_NAMESPACE_ID
+# Optional: trigger budget-check immediately rather than wait for the next hour
+curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/budget-check \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+If you had monthly budgets accumulating under the old period key, those counters remain valid — the transition logic reads both old and new period keys during the v0.2.x → v0.3.x transition window, so no usage data is lost.
+
+## Budget configs keep disappearing from KV
+
+**Symptoms**: `budget:config:*` keys exist in KV, then disappear ~24 hours later, then reappear. No `cf-monitor.yaml` `budgets:` block configured.
+
+**Cause**: auto-seeded budget configs have a **25-hour TTL**. Auto-seeding runs once on the first hourly budget-check cron when KV has no `budget:config:*` keys. The seed flag (`budget:config:__seeded__`, 24-hour TTL) prevents re-seeding every hour, but once both the configs and the seed flag expire, the next cron re-seeds.
+
+This is working as intended — limits don't change between seedings as long as your CF plan is stable. But it's cosmetically noisy and makes custom budget values impossible via KV editing (they'd be overwritten on next re-seed).
+
+**Fix**: define your own budgets in `cf-monitor.yaml`:
+
+```yaml
+budgets:
+  daily:
+    d1_writes: 50000
+    kv_writes: 10000
+  monthly:
+    d1_writes: 1000000
+```
+
+Then push them to KV (this writes without a TTL, so they're permanent):
+
+```bash
+npx cf-monitor config sync
+```
+
+Your explicit budgets take precedence over auto-seeded defaults on subsequent crons.
 
 ## Debug endpoints
 

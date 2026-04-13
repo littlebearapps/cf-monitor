@@ -49,7 +49,9 @@ For example, if your billing period runs from the 2nd to the 2nd:
 
 Plan detection requires the `Account Settings: Read` permission (`#billing:read`) on your Cloudflare API token.
 
-**If your token lacks this permission**: cf-monitor defaults to `paid` plan budgets. This is the conservative choice — Paid plan limits are higher, so you won't under-protect a Free account. However, Free account users will miss the tighter default limits.
+> ⚠️ **Free-account users: read this carefully.** "Conservative" here means safe for Paid users, not safe for Free users. If your token lacks `#billing:read`, cf-monitor silently assumes you're on Paid and applies Paid-plan budgets — which are **~10× higher** than Free-plan limits. On a Free account this effectively disables most budget protection: a runaway D1 loop can write 1.3M rows before the daily CB trips, and your account will have been rate-limited by CF long before cf-monitor notices. There is no warning log and no `GET /status` flag for this. Always add `Account Settings: Read` if you're on Free.
+
+**If your token lacks this permission**: cf-monitor defaults to `paid` plan budgets. This is the conservative choice *for Paid users* — Paid plan limits are higher, so you won't under-protect a Paid account. **Free-account users lose meaningful protection** and should add the permission before trusting cf-monitor's budget defaults.
 
 To add the permission:
 1. Go to the Cloudflare dashboard, then My Profile, then API Tokens

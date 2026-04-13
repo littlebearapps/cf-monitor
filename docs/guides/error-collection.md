@@ -2,6 +2,22 @@
 
 cf-monitor captures errors from all workers on your account via Cloudflare's tail worker mechanism, deduplicates them, and optionally creates GitHub issues with priority labels.
 
+## Prerequisites — minimum viable setup
+
+To get errors flowing into GitHub issues, you need **all four** of the following. If any is missing, errors are still captured (visible via `GET /errors`) but no issues are created.
+
+| # | Requirement | How to satisfy |
+|---|-------------|----------------|
+| 1 | cf-monitor worker deployed on the same CF account as your workers | `npx cf-monitor init --account-id YOUR_ACCOUNT_ID` + `npx cf-monitor deploy` |
+| 2 | Each monitored worker's wrangler config has `"tail_consumers": [{ "service": "cf-monitor" }]` | `npx cf-monitor wire --apply` (this is the subscription that makes the tail stream reach cf-monitor) |
+| 3 | `GITHUB_REPO` set (as an `init --github-repo` flag or in `cf-monitor.yaml` under `github.repo`) | `npx cf-monitor init --github-repo owner/repo` or edit `cf-monitor.yaml` and redeploy |
+| 4 | `GITHUB_TOKEN` secret on the cf-monitor worker — PAT with `issues: write` (fine-grained) or `repo` (classic) | `npx cf-monitor secret set GITHUB_TOKEN` |
+
+Optional but recommended:
+
+- `GITHUB_WEBHOOK_SECRET` + a webhook on the target repo → enables bidirectional sync (close an issue on GitHub and cf-monitor stops re-creating it). See [GitHub webhooks](../how-to/github-webhooks.md).
+- `SLACK_WEBHOOK_URL` → also get Slack alerts for P0/P1 errors.
+
 ## How it works
 
 1. Your worker throws an error (or a cron/queue handler fails)
@@ -31,6 +47,8 @@ cf-monitor captures errors from all workers on your account via Cloudflare's tai
 | `console.warn()` | P4 | Your code logged a warning — batched into daily digest |
 
 P0-P3 errors create individual GitHub issues immediately. P4 warnings are batched into a single daily digest issue at midnight UTC.
+
+> **Practical consequence:** any `console.error()` call in your worker code — even on an otherwise successful (`outcome: ok`) request — will produce an individual P2 GitHub issue. If you use `console.error()` for non-urgent logging, either downgrade those calls to `console.warn()` (which batches to the P4 daily digest) or route them elsewhere. A chatty `console.error` log can quickly hit the 10 issues/script/hour rate limit.
 
 ## Fingerprinting
 
@@ -64,7 +82,7 @@ cf-monitor uses four layers to prevent duplicate issues:
 
 ## Transient error patterns
 
-cf-monitor recognises 7 built-in transient patterns and limits them to one issue per category per day:
+cf-monitor recognises 8 built-in transient patterns and limits them to one issue per category per day:
 
 | Pattern | Matches |
 |---------|---------|
@@ -75,6 +93,18 @@ cf-monitor recognises 7 built-in transient patterns and limits them to one issue
 | `dns-failure` | "ENOTFOUND", "DNS failed", "getaddrinfo" |
 | `service-unavailable` | "503", "502", canceled outcome, stream disconnected |
 | `cf-internal` | "internal error" + "cloudflare" |
+
+### Custom transient patterns (v0.3.7: config-only)
+
+`cf-monitor.yaml` accepts a `transient_patterns:` array for your own categories:
+
+```yaml
+transient_patterns:
+  - name: "custom-gateway-timeout"
+    match: "504 gateway timeout"
+```
+
+> 🚧 **Not yet applied at runtime.** In v0.3.7, the matcher in `src/worker/errors/patterns.ts` only consults the 8 built-ins — custom entries are parsed and loaded onto `env._customTransientPatterns` but never consulted. Tracked in [#92](https://github.com/littlebearapps/cf-monitor/issues/92). Patterns you define now will activate automatically once the matcher integration ships.
 
 ## GitHub issues
 
