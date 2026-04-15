@@ -285,3 +285,184 @@ describe('observability logging (#82)', () => {
 		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Skip non-capturable:'));
 	});
 });
+
+describe('daily issue cap (#92)', () => {
+	it('prevents more than 50 issues per script per day', async () => {
+		// Pre-seed daily counter near the limit
+		const today = new Date().toISOString().slice(0, 10);
+		await env.CF_MONITOR_KV.put(`err:rate:my-worker:daily:${today}`, '50', { expirationTtl: 90000 });
+
+		await handleTailEvents(
+			[createTraceItem({
+				exceptions: [{ name: 'Error', message: 'New unique error', timestamp: Date.now() }],
+			})],
+			env,
+			ctx
+		);
+
+		// Should NOT create a GitHub issue (daily cap reached)
+		expect(mockFetch).not.toHaveBeenCalled();
+	});
+
+	it('allows issues when daily counter is below cap', async () => {
+		const today = new Date().toISOString().slice(0, 10);
+		await env.CF_MONITOR_KV.put(`err:rate:my-worker:daily:${today}`, '49', { expirationTtl: 90000 });
+
+		await handleTailEvents(
+			[createTraceItem({
+				exceptions: [{ name: 'Error', message: 'New unique error below cap', timestamp: Date.now() }],
+			})],
+			env,
+			ctx
+		);
+
+		expect(mockFetch).toHaveBeenCalledOnce();
+	});
+
+	it('increments daily counter after issue creation', async () => {
+		await handleTailEvents([createTraceItem()], env, ctx);
+
+		const today = new Date().toISOString().slice(0, 10);
+		const count = await env.CF_MONITOR_KV.get(`err:rate:my-worker:daily:${today}`);
+		expect(count).toBe('1');
+	});
+});
+
+describe('custom transient patterns (#92)', () => {
+	it('uses custom transient patterns from env for daily dedup', async () => {
+		env._customTransientPatterns = [
+			{ name: 'custom-billing', match: 'insufficient.*balance' },
+		];
+
+		// First event with matching message should create an issue
+		await handleTailEvents(
+			[createTraceItem({
+				exceptions: [{ name: 'Error', message: 'DeepSeek: 402 Insufficient Balance', timestamp: Date.now() }],
+			})],
+			env,
+			ctx
+		);
+		expect(mockFetch).toHaveBeenCalledOnce();
+
+		mockFetch.mockClear();
+
+		// Second event same day — transient dedup should prevent duplicate
+		await handleTailEvents(
+			[createTraceItem({
+				scriptName: 'my-worker',
+				exceptions: [{ name: 'Error', message: 'DeepSeek: 402 Insufficient Balance again', timestamp: Date.now() }],
+			})],
+			env,
+			ctx
+		);
+
+		// The built-in billing-exhausted pattern or custom pattern catches it,
+		// and transient dedup key prevents the second issue
+		// (First event already set the transient key)
+		expect(mockFetch).not.toHaveBeenCalled();
+	});
+});
+
+describe('soft error transient dedup (#99)', () => {
+	it('deduplicates transient soft errors to one issue per pattern per day', async () => {
+		// First soft error with rate limit message — should create issue
+		const event1 = createTraceItem({
+			outcome: 'ok',
+			exceptions: [],
+			logs: [
+				{ level: 'error', message: ['429 Too Many Requests from API'], timestamp: Date.now() },
+			],
+		});
+		await handleTailEvents([event1], env, ctx);
+		expect(mockFetch).toHaveBeenCalledOnce();
+
+		mockFetch.mockClear();
+
+		// Second soft error same pattern same day — transient dedup should skip
+		const event2 = createTraceItem({
+			outcome: 'ok',
+			exceptions: [],
+			logs: [
+				{ level: 'error', message: ['429 Too Many Requests again'], timestamp: Date.now() },
+			],
+		});
+		await handleTailEvents([event2], env, ctx);
+		expect(mockFetch).not.toHaveBeenCalled();
+	});
+
+	it('allows non-transient soft errors through', async () => {
+		const event = createTraceItem({
+			outcome: 'ok',
+			exceptions: [],
+			logs: [
+				{ level: 'error', message: ['TypeError: Cannot read property of undefined'], timestamp: Date.now() },
+			],
+		});
+		await handleTailEvents([event], env, ctx);
+		expect(mockFetch).toHaveBeenCalledOnce();
+	});
+});
+
+describe('batch-level dedup (#99 — #1228 burst)', () => {
+	it('deduplicates identical errors within the same tail batch', async () => {
+		const events = [
+			createTraceItem({
+				scriptName: 'bc-worker',
+				exceptions: [{ name: 'Error', message: 'Gemini 503 Service Unavailable', timestamp: Date.now() }],
+			}),
+			createTraceItem({
+				scriptName: 'bc-worker',
+				exceptions: [{ name: 'Error', message: 'Gemini 503 Service Unavailable', timestamp: Date.now() }],
+			}),
+			createTraceItem({
+				scriptName: 'bc-worker',
+				exceptions: [{ name: 'Error', message: 'Gemini 503 Service Unavailable', timestamp: Date.now() }],
+			}),
+			createTraceItem({
+				scriptName: 'bc-worker',
+				exceptions: [{ name: 'Error', message: 'Gemini 503 Service Unavailable', timestamp: Date.now() }],
+			}),
+		];
+
+		await handleTailEvents(events, env, ctx);
+
+		// Only 1 issue should be created despite 4 identical errors in the batch
+		expect(mockFetch).toHaveBeenCalledOnce();
+	});
+
+	it('allows different errors in the same batch through', async () => {
+		const events = [
+			createTraceItem({
+				scriptName: 'bc-worker',
+				exceptions: [{ name: 'Error', message: 'Gemini 503 Service Unavailable', timestamp: Date.now() }],
+			}),
+			createTraceItem({
+				scriptName: 'bc-worker',
+				exceptions: [{ name: 'TypeError', message: 'Cannot read property of undefined', timestamp: Date.now() }],
+			}),
+		];
+
+		await handleTailEvents(events, env, ctx);
+
+		// 2 different errors → 2 issues
+		expect(mockFetch).toHaveBeenCalledTimes(2);
+	});
+
+	it('deduplicates identical soft errors within the same batch', async () => {
+		const events = [
+			createTraceItem({
+				outcome: 'ok',
+				exceptions: [],
+				logs: [
+					{ level: 'error', message: ['Database connection failed'], timestamp: Date.now() },
+					{ level: 'error', message: ['Database connection failed'], timestamp: Date.now() },
+				],
+			}),
+		];
+
+		await handleTailEvents(events, env, ctx);
+
+		// Only 1 issue for the duplicate soft errors
+		expect(mockFetch).toHaveBeenCalledOnce();
+	});
+});

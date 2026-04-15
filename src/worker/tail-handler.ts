@@ -1,7 +1,7 @@
-import { CAPTURABLE_OUTCOMES, KV, MAX_ISSUES_PER_SCRIPT_PER_HOUR, PRIORITY_MAP } from '../constants.js';
+import { CAPTURABLE_OUTCOMES, KV, MAX_ISSUES_PER_SCRIPT_PER_DAY, MAX_ISSUES_PER_SCRIPT_PER_HOUR, PRIORITY_MAP } from '../constants.js';
 import type { MonitorWorkerEnv, TailOutcome } from '../types.js';
 import { computeFingerprint } from './errors/fingerprint.js';
-import { matchTransientPattern } from './errors/patterns.js';
+import { getTransientPatternName, matchTransientPattern } from './errors/patterns.js';
 import { createGitHubIssue } from './errors/github.js';
 import { recordSelfTelemetry, recordHandlerError } from './self-monitor.js';
 
@@ -16,9 +16,11 @@ export async function handleTailEvents(
 ): Promise<void> {
 	const start = Date.now();
 	let errorCount = 0;
+	// In-memory dedup prevents same-batch race condition (#99 — #1228 burst scenario)
+	const batchSeen = new Set<string>();
 	for (const event of events) {
 		try {
-			await processEvent(event, env);
+			await processEvent(event, env, batchSeen);
 		} catch (err) {
 			// Never let one event failure break the batch
 			errorCount++;
@@ -40,13 +42,13 @@ export async function handleTailEvents(
 	}
 }
 
-async function processEvent(event: TraceItem, env: MonitorWorkerEnv): Promise<void> {
+async function processEvent(event: TraceItem, env: MonitorWorkerEnv, batchSeen: Set<string>): Promise<void> {
 	const scriptName = event.scriptName ?? 'unknown';
 	const outcome = event.outcome as string;
 
 	// For ok outcomes, scan logs for soft errors and warnings (#14)
 	if (outcome === 'ok') {
-		await processSoftErrors(event, env, scriptName);
+		await processSoftErrors(event, env, scriptName, batchSeen);
 		return;
 	}
 
@@ -61,8 +63,15 @@ async function processEvent(event: TraceItem, env: MonitorWorkerEnv): Promise<vo
 	const priority = PRIORITY_MAP[outcome] ?? 'P3';
 	const fingerprint = computeFingerprint(scriptName, outcome, errorInfo.message);
 
+	// Batch-level dedup: skip if already processed in this tail invocation (#99)
+	if (batchSeen.has(fingerprint)) {
+		console.log(`[cf-monitor:tail] Batch dedup: ${scriptName}:${outcome} fp=${fingerprint}`);
+		return;
+	}
+	batchSeen.add(fingerprint);
+
 	// Check if this is a transient pattern (rate-limited, timeout, etc.)
-	const isTransient = matchTransientPattern(errorInfo.message, outcome);
+	const isTransient = matchTransientPattern(errorInfo.message, outcome, env._customTransientPatterns);
 
 	// Dedup: check if we already have a GitHub issue for this fingerprint
 	const existingIssueUrl = await env.CF_MONITOR_KV.get(`${KV.ERR_FINGERPRINT}${fingerprint}`);
@@ -76,6 +85,14 @@ async function processEvent(event: TraceItem, env: MonitorWorkerEnv): Promise<vo
 	const currentRate = parseInt(await env.CF_MONITOR_KV.get(rateLimitKey) ?? '0', 10);
 	if (currentRate >= MAX_ISSUES_PER_SCRIPT_PER_HOUR) {
 		console.log(`[cf-monitor:tail] Rate limit: ${scriptName} at ${currentRate}/${MAX_ISSUES_PER_SCRIPT_PER_HOUR}/hr`);
+		return;
+	}
+
+	// Daily cap: max N issues per script per day (#92)
+	const dailyRateKey = `${KV.ERR_RATE}${scriptName}:daily:${currentDate()}`;
+	const dailyRate = parseInt(await env.CF_MONITOR_KV.get(dailyRateKey) ?? '0', 10);
+	if (dailyRate >= MAX_ISSUES_PER_SCRIPT_PER_DAY) {
+		console.log(`[cf-monitor:tail] Daily cap: ${scriptName} at ${dailyRate}/${MAX_ISSUES_PER_SCRIPT_PER_DAY}/day`);
 		return;
 	}
 
@@ -127,8 +144,9 @@ async function processEvent(event: TraceItem, env: MonitorWorkerEnv): Promise<vo
 		console.warn(`[cf-monitor:tail] GitHub not configured (GITHUB_REPO=${!!env.GITHUB_REPO}, GITHUB_TOKEN=${!!env.GITHUB_TOKEN}) — skipping issue for ${scriptName}:${outcome}`);
 	}
 
-	// Increment rate counter
+	// Increment rate counters
 	await env.CF_MONITOR_KV.put(rateLimitKey, String(currentRate + 1), { expirationTtl: 7200 }); // 2hr
+	await env.CF_MONITOR_KV.put(dailyRateKey, String(dailyRate + 1), { expirationTtl: 90000 }); // 25hr
 
 	// Write to AE for error tracking metrics
 	try {
@@ -179,14 +197,15 @@ function extractErrorInfo(event: TraceItem): ErrorInfo {
 async function processSoftErrors(
 	event: TraceItem,
 	env: MonitorWorkerEnv,
-	scriptName: string
+	scriptName: string,
+	batchSeen: Set<string>
 ): Promise<void> {
 	const logs = event.logs ?? [];
 
 	for (const log of logs) {
 		if (log.level === 'error') {
 			const msg = log.message.map(String).join(' ').slice(0, 500);
-			await processLogEntry(env, scriptName, 'soft_error', msg);
+			await processLogEntry(env, scriptName, 'soft_error', msg, batchSeen);
 		} else if (log.level === 'warn') {
 			const msg = log.message.map(String).join(' ').slice(0, 500);
 			await storeWarningForDigest(env, scriptName, msg);
@@ -199,11 +218,20 @@ async function processLogEntry(
 	env: MonitorWorkerEnv,
 	scriptName: string,
 	outcome: string,
-	message: string
+	message: string,
+	batchSeen: Set<string>
 ): Promise<void> {
 	const priority = PRIORITY_MAP[outcome] ?? 'P3';
 	const fingerprint = computeFingerprint(scriptName, outcome, message);
-	const isTransient = matchTransientPattern(message, outcome);
+
+	// Batch-level dedup (#99)
+	if (batchSeen.has(fingerprint)) {
+		console.log(`[cf-monitor:tail] Batch dedup: ${scriptName}:${outcome} fp=${fingerprint}`);
+		return;
+	}
+	batchSeen.add(fingerprint);
+
+	const isTransient = matchTransientPattern(message, outcome, env._customTransientPatterns);
 
 	// Dedup: check existing fingerprint
 	const existingUrl = await env.CF_MONITOR_KV.get(`${KV.ERR_FINGERPRINT}${fingerprint}`);
@@ -218,6 +246,26 @@ async function processLogEntry(
 	if (currentRate >= MAX_ISSUES_PER_SCRIPT_PER_HOUR) {
 		console.log(`[cf-monitor:tail] Rate limit: ${scriptName} at ${currentRate}/${MAX_ISSUES_PER_SCRIPT_PER_HOUR}/hr`);
 		return;
+	}
+
+	// Daily cap (#92)
+	const dailyRateKey = `${KV.ERR_RATE}${scriptName}:daily:${currentDate()}`;
+	const dailyRate = parseInt(await env.CF_MONITOR_KV.get(dailyRateKey) ?? '0', 10);
+	if (dailyRate >= MAX_ISSUES_PER_SCRIPT_PER_DAY) {
+		console.log(`[cf-monitor:tail] Daily cap: ${scriptName} at ${dailyRate}/${MAX_ISSUES_PER_SCRIPT_PER_DAY}/day`);
+		return;
+	}
+
+	// Transient dedup: one issue per pattern per day for soft errors (#99)
+	if (isTransient) {
+		const patternName = getTransientPatternName(message, outcome, env._customTransientPatterns) ?? 'unknown';
+		const transientKey = `${KV.ERR_TRANSIENT}${scriptName}:soft_error:${patternName}:${currentDate()}`;
+		const existing = await env.CF_MONITOR_KV.get(transientKey);
+		if (existing) {
+			console.log(`[cf-monitor:tail] Transient dedup: ${scriptName}:soft_error:${patternName} already reported today`);
+			return;
+		}
+		await env.CF_MONITOR_KV.put(transientKey, '1', { expirationTtl: 90000 }); // 25hr
 	}
 
 	// Lock
@@ -257,6 +305,7 @@ async function processLogEntry(
 	}
 
 	await env.CF_MONITOR_KV.put(rateLimitKey, String(currentRate + 1), { expirationTtl: 7200 });
+	await env.CF_MONITOR_KV.put(dailyRateKey, String(dailyRate + 1), { expirationTtl: 90000 }); // 25hr
 
 	// AE metric
 	try {

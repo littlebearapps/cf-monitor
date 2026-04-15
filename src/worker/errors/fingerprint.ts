@@ -19,15 +19,31 @@ export function computeFingerprint(scriptName: string, outcome: string, message:
  * Normalise an error message by stripping variable content.
  */
 function normaliseMessage(message: string): string {
-	return message
+	let msg = message;
+
+	// JSON structured logs: extract inner "message" field for fingerprinting (#92)
+	if (msg.startsWith('{')) {
+		try {
+			const parsed = JSON.parse(msg);
+			if (typeof parsed.message === 'string' && parsed.message.length > 0) {
+				msg = parsed.message;
+			}
+		} catch {
+			// Not valid JSON (possibly truncated) — continue with original
+		}
+	}
+
+	return msg
 		// Strip UUIDs
 		.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<UUID>')
-		// Strip hex IDs (24+ chars)
-		.replace(/\b[0-9a-f]{24,}\b/gi, '<ID>')
-		// Strip numeric IDs
-		.replace(/\b\d{4,}\b/g, '<N>')
-		// Strip timestamps
+		// Strip timestamps BEFORE numeric IDs — \d{4,} would destroy the year (#94)
 		.replace(/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.\dZ]*/g, '<TS>')
+		// Strip hex IDs (8+ chars — catches correlationIds, not just MongoDB ObjectIds)
+		.replace(/\b[0-9a-f]{8,}\b/gi, '<ID>')
+		// Strip numeric IDs (4+ digits)
+		.replace(/\b\d{4,}\b/g, '<N>')
+		// Strip JSON-embedded small numbers (1-3 digits after colon) (#92)
+		.replace(/":\s*\d{1,3}([,}\]])/g, '": <N>$1')
 		// Strip IP addresses
 		.replace(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/g, '<IP>')
 		// Collapse whitespace

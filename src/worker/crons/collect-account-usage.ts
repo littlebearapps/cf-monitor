@@ -80,7 +80,8 @@ async function queryCoreServices(
 	const [workersResult, d1Result, kvResult, r2Result] = await Promise.all([
 		executeGraphQL(env, `{ viewer { accounts(filter: { ${accountFilter} }) {
 			workersInvocationsAdaptive(filter: { datetime_geq: "${startDatetime}", datetime_lt: "${endDatetime}" }, limit: 1000) {
-				sum { requests cpuTime }
+				sum { requests }
+				quantiles { cpuTimeP50 }
 			}
 		} } }`),
 		executeGraphQL(env, `{ viewer { accounts(filter: { ${accountFilter} }) {
@@ -102,17 +103,18 @@ async function queryCoreServices(
 		} } }`),
 	]);
 
-	// Workers
+	// Workers — cpuTime removed from sum by CF, estimate via P50 * requests (#93)
 	try {
 		const workers = workersResult?.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive;
 		if (workers?.length) {
 			let totalRequests = 0;
-			let totalCpuUs = 0;
+			let estimatedCpuUs = 0;
 			for (const w of workers) {
-				totalRequests += w.sum?.requests ?? 0;
-				totalCpuUs += w.sum?.cpuTime ?? 0;
+				const requests = w.sum?.requests ?? 0;
+				totalRequests += requests;
+				estimatedCpuUs += (w.quantiles?.cpuTimeP50 ?? 0) * requests;
 			}
-			const totalCpuMs = Math.round(totalCpuUs / 1000);
+			const totalCpuMs = Math.round(estimatedCpuUs / 1000);
 			services.workers = { requests: totalRequests, cpuMs: totalCpuMs };
 		}
 	} catch { /* skip */ }

@@ -32,14 +32,32 @@ describe('computeFingerprint', () => {
 		expect(a).toBe(b);
 	});
 
-	it('normalises timestamps to <TS>', () => {
-		// Numeric ID normalisation (\b\d{4,}\b) runs first, replacing the year.
-		// The remaining timestamp fragment is identical for same date+time, so
-		// messages differing only in year still produce the same fingerprint.
+	it('normalises timestamps to <TS> (#92 — regex ordering fix)', () => {
+		// Timestamp regex now runs BEFORE numeric ID regex,
+		// so full ISO timestamps are replaced as a unit.
 		const a = computeFingerprint('w', 'exception', 'Error at 2025-03-20T14:30:00Z in handler');
-		const b = computeFingerprint('w', 'exception', 'Error at 2026-03-20T14:30:00Z in handler');
-		// Both normalise: year → <N>, remaining fragment identical
+		const b = computeFingerprint('w', 'exception', 'Error at 2026-04-01T09:00:00Z in handler');
 		expect(a).toBe(b);
+	});
+
+	it('normalises timestamps with different times', () => {
+		const a = computeFingerprint('w', 'exception', 'Failed at 2026-04-03T10:30:00.123Z');
+		const b = computeFingerprint('w', 'exception', 'Failed at 2026-04-03T22:15:45.999Z');
+		expect(a).toBe(b);
+	});
+
+	it('normalises short hex IDs (8+ chars) — catches correlationIds (#92)', () => {
+		const a = computeFingerprint('w', 'exception', 'Error in request a1b2c3d4 failed');
+		const b = computeFingerprint('w', 'exception', 'Error in request f9e8d7c6 failed');
+		expect(a).toBe(b);
+	});
+
+	it('does not normalise short non-hex strings', () => {
+		// "handler" contains only [a-f] + non-hex chars — word boundary check prevents false matches
+		const a = computeFingerprint('w', 'exception', 'Error in module xyz123');
+		const b = computeFingerprint('w', 'exception', 'Error in module abc456');
+		// These differ because they're not pure hex
+		expect(a).not.toBe(b);
 	});
 
 	it('normalises IP addresses', () => {
@@ -51,5 +69,37 @@ describe('computeFingerprint', () => {
 	it('returns 8-char hex string', () => {
 		const fp = computeFingerprint('w', 'exception', 'test');
 		expect(fp).toMatch(/^[0-9a-f]{8}$/);
+	});
+
+	it('extracts message field from JSON structured logs (#92)', () => {
+		const jsonA = JSON.stringify({
+			level: 'error',
+			message: 'AI Gateway request failed after all retries',
+			timestamp: '2026-04-02T00:00:52.953Z',
+			duration_ms: 9513,
+			metadata: { totalAttempts: 4, correlationId: '83c4fec5-0f3e-4bdf-9abc-123456789012' },
+		});
+		const jsonB = JSON.stringify({
+			level: 'error',
+			message: 'AI Gateway request failed after all retries',
+			timestamp: '2026-04-03T12:01:55.100Z',
+			duration_ms: 3201,
+			metadata: { totalAttempts: 2, correlationId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
+		});
+		const a = computeFingerprint('bc', 'exception', jsonA);
+		const b = computeFingerprint('bc', 'exception', jsonB);
+		expect(a).toBe(b);
+	});
+
+	it('falls back to regex normalisation for invalid JSON', () => {
+		const truncated = '{"level":"error","message":"AI Gateway request failed","timestamp":"2026-04-02T00:00:52.953Z","duratio';
+		const fp = computeFingerprint('w', 'exception', truncated);
+		expect(fp).toMatch(/^[0-9a-f]{8}$/);
+	});
+
+	it('normalises JSON-embedded small numbers (#92)', () => {
+		const a = computeFingerprint('w', 'exception', '"totalAttempts": 4, "retry": 1}');
+		const b = computeFingerprint('w', 'exception', '"totalAttempts": 9, "retry": 3}');
+		expect(a).toBe(b);
 	});
 });

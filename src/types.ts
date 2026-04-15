@@ -184,6 +184,8 @@ export interface MonitorWorkerEnv {
 	ADMIN_TOKEN?: string;
 	GITHUB_WEBHOOK_SECRET?: string;
 	AI?: Ai;
+	/** Custom transient patterns resolved from cf-monitor.yaml (#92). */
+	_customTransientPatterns?: CustomTransientPattern[];
 }
 
 // =============================================================================
@@ -275,6 +277,12 @@ export interface TelemetryDataPoint {
 // CONFIG (cf-monitor.yaml)
 // =============================================================================
 
+/** Custom transient pattern from cf-monitor.yaml (#92). */
+export interface CustomTransientPattern {
+	name: string;
+	match: string;
+}
+
 export interface CfMonitorConfig {
 	account: {
 		name: string;
@@ -302,6 +310,8 @@ export interface CfMonitorConfig {
 		health_reports?: boolean;
 		model?: string;
 	};
+	/** Custom transient patterns — errors matching these get daily dedup instead of per-event (#92). */
+	transient_patterns?: CustomTransientPattern[];
 	exclude?: string[];
 }
 
