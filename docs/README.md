@@ -40,7 +40,7 @@ Step-by-step instructions for specific tasks:
 
 - [Security](./security.md) — admin auth, secrets, threat model, data exposure, SDK security
 - [Troubleshooting](./troubleshooting.md) — 14 common issues with solutions
-- [Changelog](../CHANGELOG.md) — version history (v0.1.0 to v0.3.7)
+- [Changelog](../CHANGELOG.md) — version history (v0.1.0 to v0.3.8)
 
 ## Internal Reports
 

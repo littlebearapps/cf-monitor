@@ -160,7 +160,7 @@ The 15-minute cron (`*/15 * * * *`) compares current hourly costs against a 24-h
 
 This catches anomalies that fall within budget limits but are still unusual — like a worker suddenly doing 10x more D1 reads than normal.
 
-> 🚧 **The threshold is not yet configurable in v0.3.7.** `cf-monitor.yaml` accepts `monitoring.spike_threshold`, but `src/worker/crons/cost-spike.ts` hardcodes it to `2.0`. See [Cost spike detection](./cost-spike-detection.md) for full details, tuning workarounds, and alert shape.
+> 🚧 **The threshold is not yet configurable in v0.3.8.** `cf-monitor.yaml` accepts `monitoring.spike_threshold`, but `src/worker/crons/cost-spike.ts` hardcodes it to `2.0`. See [Cost spike detection](./cost-spike-detection.md) for full details, tuning workarounds, and alert shape.
 
 ## Synthetic health checks (Validation layer)
 

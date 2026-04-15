@@ -96,7 +96,7 @@
           "type": "number",
           "minimum": 1.5,
           "default": 2.0,
-          "description": "Cost spike alert threshold (multiplier above baseline). NOT YET WIRED in v0.3.7 — src/worker/crons/cost-spike.ts hardcodes 2.0. Values set here are ignored."
+          "description": "Cost spike alert threshold (multiplier above baseline). NOT YET WIRED in v0.3.8 — src/worker/crons/cost-spike.ts hardcodes 2.0. Values set here are ignored."
         }
       }
     },
@@ -134,27 +134,27 @@
     },
     "ai": {
       "type": "object",
-      "description": "Optional AI-powered features. NOT YET IMPLEMENTED in v0.3.7 — handlers in src/worker/optional/ are stubs. Enabling these flags is a no-op. Tracked in issues #8, #9, #10.",
+      "description": "Optional AI-powered features. NOT YET IMPLEMENTED in v0.3.8 — handlers in src/worker/optional/ are stubs. Enabling these flags is a no-op. Tracked in issues #8, #9, #10.",
       "properties": {
         "enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable AI features globally. STUB — no effect in v0.3.7."
+          "description": "Enable AI features globally. STUB — no effect in v0.3.8."
         },
         "pattern_discovery": {
           "type": "boolean",
           "default": false,
-          "description": "Enable AI-powered transient error pattern discovery. STUB — no effect in v0.3.7 (issue #8)."
+          "description": "Enable AI-powered transient error pattern discovery. STUB — no effect in v0.3.8 (issue #8)."
         },
         "health_reports": {
           "type": "boolean",
           "default": false,
-          "description": "Enable AI-generated health report summaries. STUB — no effect in v0.3.7 (issue #9)."
+          "description": "Enable AI-generated health report summaries. STUB — no effect in v0.3.8 (issue #9)."
         },
         "coverage_auditor": {
           "type": "boolean",
           "default": false,
-          "description": "Enable AI-powered SDK coverage auditing. STUB — no effect in v0.3.7 (issue #10)."
+          "description": "Enable AI-powered SDK coverage auditing. STUB — no effect in v0.3.8 (issue #10)."
         },
         "model": {
           "type": "string",
@@ -165,7 +165,7 @@
     },
     "transient_patterns": {
       "type": "array",
-      "description": "Custom transient error patterns for deduplication. PARTIAL — config loads into env._customTransientPatterns but matcher only checks built-ins in v0.3.7 (issue #92). Safe to define now; will activate when matcher integration lands.",
+      "description": "Custom transient error patterns for deduplication. Patterns are checked after the 9 built-in patterns. Matching errors get 1-issue-per-pattern-per-day dedup.",
       "items": {
         "type": "object",
         "properties": {
