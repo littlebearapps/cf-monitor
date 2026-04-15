@@ -4,7 +4,26 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 
 ## [Unreleased]
 
-## [0.3.7] - 2026-03-31
+## [0.3.8] - 2026-04-15
+
+### Fixed
+- Cloudflare removed `cpuTime` from `sum` selection on `workersInvocationsAdaptive` — replaced with `quantiles { cpuTimeP50 }` in both `collect-account-usage.ts` and `collect-metrics.ts`, estimates total CPU via P50 × requests (#93)
+- Fingerprint normaliser regex ordering — timestamps now normalised before numeric IDs, preventing `\d{4,}` from destroying the year component first (#94)
+- Fingerprint normaliser hex ID threshold lowered from 24 to 8 chars — catches short correlationIds like Brand Copilot's 8-char hex suffixes (#95)
+- Custom `transient_patterns` from `cf-monitor.yaml` were parsed but never consumed by the pattern matcher — now fully wired into `matchTransientPattern()` and `getTransientPatternName()` (#96)
+- Soft errors (`console.error()` from ok-outcome events) bypassed transient dedup — `processLogEntry()` now uses per-pattern daily dedup matching `processEvent()` behaviour (#99)
+- Same-batch burst race condition — 4 identical Gemini 503s in one tail batch created 4 issues instead of 1; added in-memory `Set<string>` batch-level dedup that eliminates duplicate fingerprints within a single tail invocation (#99)
+- Fingerprint normaliser fails on JSON structured logs — variable fields (`correlationId`, `duration_ms`, `totalAttempts`) embedded in JSON produce unique hashes; now extracts the `"message"` field from JSON strings before fingerprinting, plus normalises JSON-embedded small numbers (1-3 digits) (#92)
+
+### Added
+- Built-in `billing-exhausted` transient pattern — matches `402`, `insufficient balance`, `payment required` for DeepSeek/OpenAI billing errors (#97)
+- Daily issue cap of 50 per script per day (`MAX_ISSUES_PER_SCRIPT_PER_DAY`) — prevents sustained error floods that bypass the 10/hour rate limit (#98)
+- 22 new unit tests covering all fixes (338 total, up from 316)
+
+### Changed
+- `matchTransientPattern()` and `getTransientPatternName()` accept optional `customPatterns` parameter — backward compatible, no breaking changes
+- `handleTailEvents()`, `processEvent()`, and `processLogEntry()` now pass a shared `batchSeen: Set<string>` for in-memory dedup
+- GraphQL CPU metric is now an estimate (`cpuTimeP50 × requests / 1000`) rather than an exact sum — CF removed the summable `cpuTime` field
 
 ## [0.3.7] - 2026-03-31
 
@@ -205,7 +224,8 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
-[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.7...HEAD
+[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.8...HEAD
+[0.3.8]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.4...v0.3.5

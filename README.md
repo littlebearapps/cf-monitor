@@ -94,7 +94,7 @@ That's it. Worker name, feature IDs, bindings, and budgets are all auto-detected
 
 ### Optional (AI-powered, disabled by default)
 
-> 🚧 **Not yet implemented in v0.3.7.** The YAML keys exist and parse, but the cron handlers are stubs (`src/worker/optional/*.ts`). Enabling them is a no-op. Tracked in issues [#8](https://github.com/littlebearapps/cf-monitor/issues/8), [#9](https://github.com/littlebearapps/cf-monitor/issues/9), [#10](https://github.com/littlebearapps/cf-monitor/issues/10).
+> 🚧 **Not yet implemented in v0.3.8.** The YAML keys exist and parse, but the cron handlers are stubs (`src/worker/optional/*.ts`). Enabling them is a no-op. Tracked in issues [#8](https://github.com/littlebearapps/cf-monitor/issues/8), [#9](https://github.com/littlebearapps/cf-monitor/issues/9), [#10](https://github.com/littlebearapps/cf-monitor/issues/10).
 
 - 🤖 **Pattern discovery** — AI detection of transient error patterns (planned)
 - 📝 **Health reports** — natural language account health summaries (planned)

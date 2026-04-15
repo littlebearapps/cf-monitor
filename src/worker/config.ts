@@ -1,4 +1,4 @@
-import type { MonitorWorkerEnv } from '../types.js';
+import type { CustomTransientPattern, MonitorWorkerEnv } from '../types.js';
 
 /**
  * Runtime config parser.
@@ -42,6 +42,8 @@ export interface ResolvedConfig {
 		coverage_auditor?: boolean;
 		model?: string;
 	};
+	/** Custom transient patterns from cf-monitor.yaml (#92). */
+	transient_patterns?: CustomTransientPattern[];
 }
 
 /**
@@ -98,6 +100,11 @@ export function enrichEnv(env: MonitorWorkerEnv): MonitorWorkerEnv {
 		) {
 			(enriched as Record<string, unknown>)[key] = value;
 		}
+	}
+
+	// Pass custom transient patterns to tail handler (#92)
+	if (Array.isArray(config.transient_patterns) && config.transient_patterns.length > 0) {
+		enriched._customTransientPatterns = config.transient_patterns;
 	}
 
 	return enriched;

@@ -63,9 +63,11 @@ fingerprint = FNV-hash( scriptName + ":" + outcome + ":" + normalise(message) )
 Before hashing, error messages are normalised to strip variable content:
 
 - **UUIDs** → `<UUID>` (e.g. `abc123de-f456-7890-1234-56780cdef012`)
-- **Hex IDs** (24+ chars) → `<ID>`
+- **JSON message extraction** — if the message starts with `{`, the `"message"` field is extracted for fingerprinting (strips variable metadata like `correlationId`, `duration_ms`)
+- **Hex IDs** (8+ chars) → `<ID>` (catches correlationIds, MongoDB ObjectIds, etc.)
 - **Numeric IDs** (4+ digits) → `<N>`
-- **Timestamps** → `<TS>` (ISO 8601 format)
+- **Timestamps** → `<TS>` (ISO 8601 format — processed before numeric IDs to prevent year stripping)
+- **JSON small numbers** (1-3 digits after `:`) → `<N>` (catches `"attempt": 4`, `"totalAttempts": 2`)
 - **IP addresses** → `<IP>`
 - Whitespace is collapsed and the message is truncated to 200 characters
 
@@ -73,16 +75,18 @@ This means the same logical error with different IDs, timestamps, or request-spe
 
 ## Deduplication layers
 
-cf-monitor uses four layers to prevent duplicate issues:
+cf-monitor uses six layers to prevent duplicate issues:
 
-1. **Fingerprint lookup** — checks KV for `err:fp:{hash}`. If found, the error already has a GitHub issue. (90-day TTL)
-2. **Rate limit** — max 10 issues per script per hour via `err:rate:{script}:{hour}`. Prevents issue floods from cascading failures.
-3. **Transient dedup** — known transient errors (rate limits, timeouts) get max 1 issue per category per day via `err:transient:{script}:{category}:{date}`.
-4. **Lock** — 60-second KV lock via `err:lock:{fingerprint}` prevents race conditions when multiple tail events arrive simultaneously.
+1. **Batch dedup** — in-memory `Set<string>` tracks fingerprints within a single tail invocation. Eliminates same-batch duplicates with zero latency (no KV round-trip).
+2. **Fingerprint lookup** — checks KV for `err:fp:{hash}`. If found, the error already has a GitHub issue. (90-day TTL)
+3. **Rate limit** — max 10 issues per script per hour via `err:rate:{script}:{hour}`. Prevents issue floods from cascading failures.
+4. **Daily cap** — max 50 issues per script per day via `err:rate:{script}:daily:{date}`. Hard ceiling on sustained floods.
+5. **Transient dedup** — known transient errors (rate limits, timeouts, billing errors) get max 1 issue per category per day via `err:transient:{script}:{category}:{date}`. Works for both hard errors and soft errors (`console.error()`).
+6. **Lock** — 60-second KV lock via `err:lock:{fingerprint}` prevents race conditions across concurrent tail invocations.
 
 ## Transient error patterns
 
-cf-monitor recognises 8 built-in transient patterns and limits them to one issue per category per day:
+cf-monitor recognises 9 built-in transient patterns and limits them to one issue per category per day:
 
 | Pattern | Matches |
 |---------|---------|
@@ -93,8 +97,9 @@ cf-monitor recognises 8 built-in transient patterns and limits them to one issue
 | `dns-failure` | "ENOTFOUND", "DNS failed", "getaddrinfo" |
 | `service-unavailable` | "503", "502", canceled outcome, stream disconnected |
 | `cf-internal` | "internal error" + "cloudflare" |
+| `billing-exhausted` | "insufficient balance", "402", "payment required" |
 
-### Custom transient patterns (v0.3.7: config-only)
+### Custom transient patterns
 
 `cf-monitor.yaml` accepts a `transient_patterns:` array for your own categories:
 
@@ -102,9 +107,11 @@ cf-monitor recognises 8 built-in transient patterns and limits them to one issue
 transient_patterns:
   - name: "custom-gateway-timeout"
     match: "504 gateway timeout"
+  - name: "db-pool-exhausted"
+    match: "connection pool"
 ```
 
-> 🚧 **Not yet applied at runtime.** In v0.3.7, the matcher in `src/worker/errors/patterns.ts` only consults the 8 built-ins — custom entries are parsed and loaded onto `env._customTransientPatterns` but never consulted. Tracked in [#92](https://github.com/littlebearapps/cf-monitor/issues/92). Patterns you define now will activate automatically once the matcher integration ships.
+Custom patterns are checked after the built-in patterns. Each requires a `name` (used in dedup keys) and `match` (regex, case-insensitive). Matching errors get the same 1-issue-per-day dedup as built-ins.
 
 ## GitHub issues
 

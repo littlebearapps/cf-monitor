@@ -1,6 +1,6 @@
 # CLAUDE.md - cf-monitor
 
-**Last Updated**: 2026-03-31
+**Last Updated**: 2026-04-15
 
 ---
 
@@ -38,7 +38,7 @@
 | **Language** | TypeScript |
 | **Runtime** | Cloudflare Workers |
 | **npm** | `@littlebearapps/cf-monitor` |
-| **Status** | v0.3.7 — production-tested, published to npm |
+| **Status** | v0.3.8 — production-tested, published to npm |
 | **Repository** | https://github.com/littlebearapps/cf-monitor |
 | **Licence** | MIT |
 | **Issues** | https://github.com/littlebearapps/cf-monitor/issues |
@@ -321,7 +321,25 @@ Full security audit with 9 fixes:
 
 ---
 
-## Stubs & Partial Features (v0.3.7)
+## Bug Fixes (v0.3.8)
+
+**#92 — JSON message extraction in fingerprint**: FIXED. `normaliseMessage()` now extracts the `"message"` field from JSON structured logs before fingerprinting. Also normalises JSON-embedded small numbers (1-3 digits). Prevents variable metadata (`correlationId`, `duration_ms`, `totalAttempts`) from producing unique hashes for identical errors.
+
+**#93 — cpuTime GraphQL field removed**: FIXED. Cloudflare removed `cpuTime` from `sum` selection. Both `collect-account-usage.ts` and `collect-metrics.ts` now use `quantiles { cpuTimeP50 }` and estimate total CPU as `P50 * requests / 1000`. Data is approximate but consistent.
+
+**#94 — Regex ordering in normaliseMessage**: FIXED. Timestamp regex now runs before `\d{4,}` numeric ID regex, preventing the year component from being stripped first.
+
+**#95 — Hex ID threshold too high**: FIXED. Lowered from 24 to 8 chars. Catches short correlationIds like Brand Copilot's 8-char hex suffixes.
+
+**#96 — Custom transient_patterns wired**: FIXED. `transient_patterns:` array in `cf-monitor.yaml` is now consumed by `matchTransientPattern()` and `getTransientPatternName()`. Custom patterns checked after the 9 built-in patterns.
+
+**#97 — billing-exhausted transient pattern**: ADDED. New 9th built-in pattern matches `402`, `insufficient balance`, `payment required`. Catches DeepSeek/OpenAI billing errors.
+
+**#98 — Daily issue cap**: ADDED. `MAX_ISSUES_PER_SCRIPT_PER_DAY = 50` enforced in both `processEvent` and `processLogEntry`. Prevents sustained error floods (previously 10/hour could accumulate to 240/day).
+
+**#99 — Soft error transient dedup + batch dedup**: FIXED. (1) `processLogEntry()` now uses transient dedup with per-pattern daily keys (`err:transient:{script}:soft_error:{pattern}:{date}`). (2) In-memory `Set<string>` tracks fingerprints within each tail batch, eliminating same-batch race conditions (the BC #1228 scenario where 4 Gemini 503s in one batch created 4 separate issues).
+
+## Stubs & Partial Features (v0.3.8)
 
 Config surfaces exist for these, but the wiring is incomplete. If you're asked to use any of these, implement the missing integration first and flag the gap to the user:
 
@@ -330,10 +348,9 @@ Config surfaces exist for these, but the wiring is incomplete. If you're asked t
 | AI pattern discovery | `ai.pattern_discovery` in `cf-monitor.yaml` | `src/worker/optional/pattern-discovery.ts` is a `console.log()` TODO stub. Issue #8. |
 | AI health reports | `ai.health_reports` | `src/worker/optional/health-reporter.ts` is a stub. Issue #9. |
 | AI coverage auditor | `ai.coverage_auditor` | `src/worker/optional/coverage-auditor.ts` is a stub. Issue #10. |
-| Custom transient patterns | `transient_patterns:` array | Parses to `env._customTransientPatterns` but `src/worker/errors/patterns.ts` matcher only consults the 8 built-ins. Issue #92. |
 | Configurable spike threshold | `monitoring.spike_threshold` | Schema validates `≥ 1.5`, but `src/worker/crons/cost-spike.ts:7` hardcodes `const SPIKE_THRESHOLD = 2.0`. |
 
-Docs reflect these gaps as of 2026-04-13 — see `README.md`, `docs/configuration.md`, `docs/guides/error-collection.md`, `docs/guides/cost-spike-detection.md`.
+Docs reflect these gaps as of 2026-04-15 — see `README.md`, `docs/configuration.md`, `docs/guides/cost-spike-detection.md`.
 
 ## Open Work
 
@@ -341,4 +358,3 @@ See https://github.com/littlebearapps/cf-monitor/issues for planned features.
 
 **Remaining features:**
 - #8, #9, #10 — AI optional features (pattern discovery, health reports, coverage auditor) — stubs created in `src/worker/optional/`
-- #92 — Wire custom `transient_patterns` into `matchTransientPattern()`

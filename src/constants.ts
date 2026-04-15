@@ -181,6 +181,9 @@ export const CAPTURABLE_OUTCOMES: ReadonlySet<string> = new Set([
 /** Max GitHub issues created per script per hour. */
 export const MAX_ISSUES_PER_SCRIPT_PER_HOUR = 10;
 
+/** Max GitHub issues created per script per day (#92). */
+export const MAX_ISSUES_PER_SCRIPT_PER_DAY = 50;
+
 /** Error priority thresholds. */
 export const PRIORITY_MAP: Record<string, string> = {
 	exception: 'P1',

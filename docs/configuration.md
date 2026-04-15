@@ -56,10 +56,10 @@ monitoring:
   gap_detection_minutes: 15                 # How often to check for gaps (5-60, default 15)
   heartbeat_url: "https://..."              # Gatus/uptime monitor heartbeat URL
   heartbeat_token: $GATUS_TOKEN             # Bearer token for heartbeat
-  spike_threshold: 2.0                      # ⚠️ Not yet wired in v0.3.7 — see below
+  spike_threshold: 2.0                      # ⚠️ Not yet wired in v0.3.8 — see below
 ```
 
-> 🚧 **`spike_threshold` is config-only in v0.3.7.** The YAML key parses and the schema validates, but `src/worker/crons/cost-spike.ts` hardcodes the threshold to `2.0`. Values you set here are ignored until this is wired up. See [Cost spike detection](./guides/cost-spike-detection.md) for details.
+> 🚧 **`spike_threshold` is config-only in v0.3.8.** The YAML key parses and the schema validates, but `src/worker/crons/cost-spike.ts` hardcodes the threshold to `2.0`. Values you set here are ignored until this is wired up. See [Cost spike detection](./guides/cost-spike-detection.md) for details.
 
 Also see [Gatus heartbeat](./how-to/gatus-heartbeat.md) for `heartbeat_url` / `heartbeat_token` setup end-to-end.
 
@@ -123,11 +123,11 @@ exclude:
 
 ### ai (optional)
 
-> 🚧 **Not yet implemented in v0.3.7.** The keys below parse and validate, but the cron handlers in `src/worker/optional/` are stubs that log "TODO" and return. Enabling these flags is a no-op. Tracked: [#8](https://github.com/littlebearapps/cf-monitor/issues/8) pattern discovery, [#9](https://github.com/littlebearapps/cf-monitor/issues/9) health reports, [#10](https://github.com/littlebearapps/cf-monitor/issues/10) coverage auditor.
+> 🚧 **Not yet implemented in v0.3.8.** The keys below parse and validate, but the cron handlers in `src/worker/optional/` are stubs that log "TODO" and return. Enabling these flags is a no-op. Tracked: [#8](https://github.com/littlebearapps/cf-monitor/issues/8) pattern discovery, [#9](https://github.com/littlebearapps/cf-monitor/issues/9) health reports, [#10](https://github.com/littlebearapps/cf-monitor/issues/10) coverage auditor.
 
 ```yaml
 ai:
-  enabled: false                            # Master switch for AI features (no-op in v0.3.7)
+  enabled: false                            # Master switch for AI features (no-op in v0.3.8)
   pattern_discovery: false                  # AI error pattern detection (stub)
   health_reports: false                     # Natural language health summaries (stub)
   coverage_auditor: false                   # AI integration scoring (stub)
@@ -138,7 +138,7 @@ AI features are disabled by default and will require explicit opt-in once implem
 
 ### transient_patterns (optional)
 
-> 🚧 **Configured but not yet applied in v0.3.7.** The YAML key is parsed and the values are loaded into `env._customTransientPatterns`, but `matchTransientPattern()` in `src/worker/errors/patterns.ts` only checks the 8 built-in patterns — user-supplied patterns are silently ignored. Tracked in [#92](https://github.com/littlebearapps/cf-monitor/issues/92). The 8 built-in patterns (`rate-limited`, `timeout`, `quota-exhausted`, `connection-refused`, `dns-failure`, `service-unavailable`, `cf-internal`) are active and work correctly.
+Define custom transient error patterns to supplement the 9 built-in patterns (`rate-limited`, `timeout`, `quota-exhausted`, `connection-refused`, `dns-failure`, `service-unavailable`, `cf-internal`, `billing-exhausted`). Matching errors are deduplicated to one GitHub issue per pattern per day.
 
 ```yaml
 transient_patterns:
@@ -148,7 +148,7 @@ transient_patterns:
     match: "connection pool"
 ```
 
-Once wired up, matching errors will be deduplicated to one GitHub issue per category per day, as with the built-ins.
+Each pattern requires a `name` (used in dedup keys) and a `match` (regex pattern, case-insensitive). Built-in patterns are checked first — custom patterns serve as supplementary matchers for domain-specific transient errors.
 
 ---
 

@@ -35,10 +35,10 @@ If `CLOUDFLARE_API_TOKEN` or `CF_ACCOUNT_ID` is missing, the handler exits early
 
 ## Tuning the threshold
 
-> 🚧 **Config key exists but is not yet wired in v0.3.7.** `cf-monitor.yaml` accepts `monitoring.spike_threshold` and the schema validates it (range ≥ 1.5, default 2.0), but `src/worker/crons/cost-spike.ts:7` hardcodes `const SPIKE_THRESHOLD = 2.0;`. Values you set in YAML are currently ignored.
+> 🚧 **Config key exists but is not yet wired in v0.3.8.** `cf-monitor.yaml` accepts `monitoring.spike_threshold` and the schema validates it (range ≥ 1.5, default 2.0), but `src/worker/crons/cost-spike.ts:7` hardcodes `const SPIKE_THRESHOLD = 2.0;`. Values you set in YAML are currently ignored.
 
 ```yaml
-# cf-monitor.yaml — parses but has no effect in v0.3.7
+# cf-monitor.yaml — parses but has no effect in v0.3.8
 monitoring:
   spike_threshold: 3.0    # Intended: 300% of baseline before alerting
 ```

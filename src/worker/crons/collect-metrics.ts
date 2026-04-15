@@ -79,7 +79,9 @@ function buildGraphQLQuery(accountId: string, start: Date, end: Date): string {
           requests
           errors
           subrequests
-          cpuTime
+        }
+        quantiles {
+          cpuTimeP50
         }
       }
       d1AnalyticsAdaptiveGroups(
@@ -121,7 +123,8 @@ interface GraphQLResponse {
 			accounts: Array<{
 				workersInvocationsAdaptive?: Array<{
 					dimensions: { scriptName: string };
-					sum: { requests: number; errors: number; subrequests: number; cpuTime: number };
+					sum: { requests: number; errors: number; subrequests: number };
+					quantiles?: { cpuTimeP50: number };
 				}>;
 				d1AnalyticsAdaptiveGroups?: Array<{
 					sum: { readQueries: number; writeQueries: number; rowsRead: number; rowsWritten: number };
@@ -148,7 +151,7 @@ function writeMetricsToAE(env: MonitorWorkerEnv, data: GraphQLResponse): void {
 			blobs: [worker.dimensions.scriptName, 'graphql', 'workers'],
 			doubles: [
 				0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-				worker.sum.requests, Math.round(worker.sum.cpuTime / 1000),
+				worker.sum.requests, Math.round(((worker.quantiles?.cpuTimeP50 ?? 0) * worker.sum.requests) / 1000),
 				0, 0, 0, 0, 0, 0, 0, 0,
 			],
 			indexes: [`${worker.dimensions.scriptName}:graphql:workers`],
