@@ -42,8 +42,18 @@ cf-monitor/
       commands/           # 9 commands: init, deploy, wire, status, coverage, secret, config-sync, upgrade, migrate, usage
   tests/                  # 338 unit tests + 53 integration tests (10 files)
   worker/                 # Pre-built entry for wrangler deploy
-  docs/                   # 20 documentation files (getting-started, configuration, security, troubleshooting + 10 guides + 3 how-to)
+  docs/
+    README.md             # Documentation index
+    getting-started.md, configuration.md, security.md, troubleshooting.md
+    guides/               # 11 task-oriented guides
+    how-to/               # 3 step-by-step how-tos
+    faq/index.md          # Marketing-site FAQPage source — DO NOT delete or rename
 ```
+
+## Documentation Policy
+
+- **`docs/faq/index.md` is sync-managed.** It is the upstream source for the FAQPage JSON-LD schema rendered at <https://littlebearapps.com/help/cf-monitor/faq/>. The marketing site's docs-sync pipeline (`littlebearapps/littlebearapps.com`, `scripts/docs-sync.config.ts`) hard-fails the build if the source is missing or moved. **Do not delete, rename, or relocate** without a coordinated PR in the marketing-site repo.
+- **Update the FAQ when user-facing surfaces change**: install steps, required token scopes, secrets, data collection, fail-open behaviour, costs, plan detection, CB reset semantics, alert channels, AI feature status, update/uninstall procedure. Keep answers terse and link to the authoritative source doc rather than restating it. Maintain ≥7 question-shaped H2s. See `.claude/rules/docs-faq.md` for the full editorial rules.
 
 ## Key Conventions
 
