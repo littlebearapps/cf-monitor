@@ -105,6 +105,14 @@ cf-monitor/
 │
 ├── vitest.integration.config.ts  # Integration test config (globalSetup, 120s timeout)
 │
+├── docs/
+│   ├── README.md             # Documentation index
+│   ├── getting-started.md, configuration.md, security.md, troubleshooting.md
+│   ├── guides/               # 11 task-oriented guides
+│   ├── how-to/               # 3 step-by-step how-tos
+│   └── faq/index.md          # Marketing-site FAQPage source — DO NOT delete or rename
+│                             # See .claude/rules/docs-faq.md for editorial rules
+│
 └── tests/                    # 290 unit tests + 53 integration tests
     ├── helpers/               # Mock KV, AE, env, request factories
     ├── sdk/                   # monitor, proxy, metrics, detection, circuit-breaker
@@ -116,6 +124,20 @@ cf-monitor/
         ├── test-consumer.ts   # 13-route consumer worker for testing
         └── 01-10*.test.ts     # Sequential: health, SDK, CB, telemetry, webhooks, budgets, crons, errors, dry-run, proxy-tracking
 ```
+
+---
+
+## Documentation Policy
+
+`docs/faq/index.md` is **sync-managed** — it's the upstream source for the FAQPage JSON-LD schema rendered at <https://littlebearapps.com/help/cf-monitor/faq/> via the marketing-site docs-sync pipeline (`littlebearapps/littlebearapps.com`, `scripts/docs-sync.config.ts`, `cf-monitor` entry, `source: 'docs/faq'`).
+
+- **Do not delete, rename, or move** the file or its directory — the site sync hard-fails the build on a missing source. Any path change requires a coordinated PR in the marketing-site repo to land **first**.
+- **Frontmatter is `title` + `description` only.** The sync injects `category: faq`, `tool: cf-monitor`, and dates. Don't duplicate those fields.
+- **Update when user-facing surfaces change**: install steps, required CF/GitHub token scopes, secrets, data collection, fail-open semantics, costs, plan detection, CB reset, alerts, AI feature status, update/uninstall procedure. Keep answers terse and cross-link to authoritative source docs rather than restating them.
+- **Maintain ≥7 question-shaped H2s.** Below 2 the FAQPage schema doesn't fire.
+- **Match existing voice**: informal, code-heavy, AU English where natural. No placeholders, no `TODO`/`FIXME`.
+
+Full editorial rules + verification commands: **`.claude/rules/docs-faq.md`**.
 
 ---
 
