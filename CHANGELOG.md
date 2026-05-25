@@ -4,7 +4,7 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 
 ## [Unreleased]
 
-## [0.3.9] - 2026-04-15
+## [0.3.9] - 2026-05-25
 
 ### Fixed
 - CLI `deploy` serializes `transient_patterns` YAML array of objects as `{}` instead of JSON array — custom transient patterns silently dropped during deployment, negating v0.3.8 issue flood fix (#102). Root cause: YAML parser only handled simple string arrays, not arrays of objects with multiple properties. Now parses `- key: value` + indented continuation lines as array item objects.
@@ -248,7 +248,8 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
-[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.8...HEAD
+[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.9...HEAD
+[0.3.9]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.5...v0.3.6
