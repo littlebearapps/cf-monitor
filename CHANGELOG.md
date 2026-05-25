@@ -4,6 +4,30 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-04-15
+
+### Fixed
+- CLI `deploy` serializes `transient_patterns` YAML array of objects as `{}` instead of JSON array — custom transient patterns silently dropped during deployment, negating v0.3.8 issue flood fix (#102). Root cause: YAML parser only handled simple string arrays, not arrays of objects with multiple properties. Now parses `- key: value` + indented continuation lines as array item objects.
+
+### Added
+- Enriched GitHub issue templates with full trace context from Cloudflare's `TraceItem` API (#101):
+  - Stack traces from `exceptions[0].stack` (capped at 2000 chars)
+  - CPU and wall time metrics
+  - Event type detection (fetch/scheduled/queue/alarm/rpc/websocket/email) with trigger info (cron expression, queue name, batch size)
+  - Request context for fetch handlers (URL, method, response status)
+  - Last 10 log entries as a markdown table with relative timestamps
+  - Event timestamp (actual error time instead of cf-monitor capture time)
+  - Truncation warning when Cloudflare truncated logs at 256KB
+  - Deep links to Cloudflare Workers Dashboard and Workers Observability
+  - JSON error messages auto-parsed for readability (extracts `"message"` field instead of dumping raw JSON)
+  - Durable Object ID and execution model when available
+- 25 new unit tests for enriched templates and trace context extraction (362 total, up from 338)
+
+### Changed
+- `ErrorIssueParams` interface extended with 15 optional fields — fully backward compatible
+- `extractErrorInfo()` now checks exceptions before error logs (exceptions have stack traces)
+- `processLogEntry()` accepts the full `TraceItem` event to extract trace context for soft errors
+
 ## [0.3.8] - 2026-04-15
 
 ### Fixed

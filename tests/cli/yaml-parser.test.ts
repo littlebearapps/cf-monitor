@@ -90,6 +90,73 @@ budgets:
 		expect(result.budgets.monthly.d1_writes).toBe(1000000);
 	});
 
+	it('parses arrays of objects (transient_patterns) (#102)', () => {
+		const yaml = `
+transient_patterns:
+  - name: "insufficient-balance"
+    match: "insufficient.*balance|402.*Insufficient"
+  - name: "deepseek-billing"
+    match: "402.*deepseek|DeepSeek.*402"
+  - name: "gemini-503"
+    match: "503.*gemini|Gemini.*503|AI Gateway.*503"
+`;
+		const result = JSON.parse(parseYamlConfig(yaml));
+		expect(result.transient_patterns).toBeInstanceOf(Array);
+		expect(result.transient_patterns).toHaveLength(3);
+		expect(result.transient_patterns[0]).toEqual({
+			name: 'insufficient-balance',
+			match: 'insufficient.*balance|402.*Insufficient',
+		});
+		expect(result.transient_patterns[1]).toEqual({
+			name: 'deepseek-billing',
+			match: '402.*deepseek|DeepSeek.*402',
+		});
+		expect(result.transient_patterns[2]).toEqual({
+			name: 'gemini-503',
+			match: '503.*gemini|Gemini.*503|AI Gateway.*503',
+		});
+	});
+
+	it('parses simple string arrays (exclude)', () => {
+		const yaml = `
+exclude:
+  - "wpnav-redirects"
+  - "lbapps-redirector"
+`;
+		const result = JSON.parse(parseYamlConfig(yaml));
+		expect(result.exclude).toEqual(['wpnav-redirects', 'lbapps-redirector']);
+	});
+
+	it('handles mixed config with both arrays and objects (#102)', () => {
+		const yaml = `
+account:
+  name: brand-copilot
+
+github:
+  repo: "littlebearapps/brand-copilot"
+  token: $GITHUB_TOKEN
+
+transient_patterns:
+  - name: "gemini-503"
+    match: "503.*gemini"
+
+budgets:
+  daily:
+    d1_writes: 50000
+
+exclude:
+  - "old-worker"
+`;
+		const result = JSON.parse(parseYamlConfig(yaml));
+		expect(result.account.name).toBe('brand-copilot');
+		expect(result.github.repo).toBe('littlebearapps/brand-copilot');
+		expect(result.transient_patterns).toHaveLength(1);
+		expect(result.transient_patterns[0].name).toBe('gemini-503');
+		expect(result.transient_patterns[0].match).toBe('503.*gemini');
+		expect(result.budgets.daily.d1_writes).toBe(50000);
+		expect(result.exclude).toEqual(['old-worker']);
+	});
+
 	it('parses numbers and booleans correctly', () => {
 		const yaml = `
 monitoring:

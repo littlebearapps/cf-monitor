@@ -466,3 +466,152 @@ describe('batch-level dedup (#99 — #1228 burst)', () => {
 		expect(mockFetch).toHaveBeenCalledOnce();
 	});
 });
+
+describe('enriched trace context', () => {
+	it('includes stack trace from exceptions in issue body', async () => {
+		const event = createTraceItem({
+			exceptions: [{
+				name: 'TypeError',
+				message: 'Cannot read property of undefined',
+				timestamp: Date.now(),
+				stack: 'TypeError: Cannot read property of undefined\n    at handler (worker.js:42:10)',
+			}],
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body).body as string;
+		expect(body).toContain('### Stack Trace');
+		expect(body).toContain('worker.js:42:10');
+	});
+
+	it('includes CPU and wall time in issue body', async () => {
+		const event = createTraceItem({
+			cpuTime: 42,
+			wallTime: 1250,
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body).body as string;
+		expect(body).toContain('42ms');
+		expect(body).toContain('1250ms');
+	});
+
+	it('includes event timestamp instead of capture time', async () => {
+		const eventTime = new Date('2026-04-15T07:00:00.000Z').getTime();
+		const event = createTraceItem({
+			eventTimestamp: eventTime,
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body).body as string;
+		expect(body).toContain('2026-04-15T07:00:00.000Z');
+	});
+
+	it('includes request URL and method for fetch events', async () => {
+		const event = createTraceItem({
+			event: {
+				request: { url: 'https://api.example.com/data', method: 'POST', headers: {} },
+				response: { status: 500 },
+			},
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body).body as string;
+		expect(body).toContain('Fetch');
+		expect(body).toContain('api.example.com');
+		expect(body).toContain('POST');
+		expect(body).toContain('HTTP 500');
+	});
+
+	it('includes cron expression for scheduled events', async () => {
+		const event = createTraceItem({
+			event: { cron: '0 2 * * *', scheduledTime: Date.now() },
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body).body as string;
+		expect(body).toContain('Scheduled');
+		expect(body).toContain('0 2 * * *');
+	});
+
+	it('includes queue name and batch size for queue events', async () => {
+		const event = createTraceItem({
+			event: { queue: 'telemetry-queue', batchSize: 25 },
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body).body as string;
+		expect(body).toContain('Queue');
+		expect(body).toContain('telemetry-queue');
+		expect(body).toContain('batch: 25');
+	});
+
+	it('includes log history in issue body', async () => {
+		const baseTime = Date.now();
+		const event = createTraceItem({
+			eventTimestamp: baseTime,
+			exceptions: [{ name: 'Error', message: 'Final error', timestamp: baseTime + 100 }],
+			logs: [
+				{ level: 'info', message: ['Starting handler'], timestamp: baseTime + 10 },
+				{ level: 'info', message: ['Fetching data'], timestamp: baseTime + 30 },
+				{ level: 'error', message: ['Connection refused'], timestamp: baseTime + 50 },
+			],
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body).body as string;
+		expect(body).toContain('### Logs');
+		expect(body).toContain('Starting handler');
+		expect(body).toContain('Fetching data');
+		expect(body).toContain('Connection refused');
+	});
+
+	it('includes truncation warning when event was truncated', async () => {
+		const event = createTraceItem({ truncated: true });
+
+		await handleTailEvents([event], env, ctx);
+
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body).body as string;
+		expect(body).toContain('truncated by Cloudflare');
+	});
+
+	it('includes dashboard links when CF_ACCOUNT_ID is set', async () => {
+		env.CF_ACCOUNT_ID = '55a0bf6d1396d90cbf9dcbf30fceeb14';
+
+		await handleTailEvents([createTraceItem()], env, ctx);
+
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body).body as string;
+		expect(body).toContain('### Investigation');
+		expect(body).toContain('dash.cloudflare.com/55a0bf6d1396d90cbf9dcbf30fceeb14');
+	});
+
+	it('includes enriched context for soft errors too', async () => {
+		env.CF_ACCOUNT_ID = '55a0bf6d1396d90cbf9dcbf30fceeb14';
+
+		const event = createTraceItem({
+			outcome: 'ok',
+			cpuTime: 15,
+			wallTime: 200,
+			exceptions: [],
+			logs: [
+				{ level: 'info', message: ['Processing request'], timestamp: Date.now() },
+				{ level: 'error', message: ['Database timeout'], timestamp: Date.now() + 50 },
+			],
+		});
+
+		await handleTailEvents([event], env, ctx);
+
+		const body = JSON.parse(mockFetch.mock.calls[0][1].body).body as string;
+		expect(body).toContain('15ms');
+		expect(body).toContain('200ms');
+		expect(body).toContain('### Investigation');
+		expect(body).toContain('### Logs');
+	});
+});

@@ -38,7 +38,7 @@
 | **Language** | TypeScript |
 | **Runtime** | Cloudflare Workers |
 | **npm** | `@littlebearapps/cf-monitor` |
-| **Status** | v0.3.8 — production-tested, published to npm |
+| **Status** | v0.3.9 — production-tested, published to npm |
 | **Repository** | https://github.com/littlebearapps/cf-monitor |
 | **Licence** | MIT |
 | **Issues** | https://github.com/littlebearapps/cf-monitor/issues |
@@ -361,7 +361,7 @@ Full security audit with 9 fixes:
 
 **#99 — Soft error transient dedup + batch dedup**: FIXED. (1) `processLogEntry()` now uses transient dedup with per-pattern daily keys (`err:transient:{script}:soft_error:{pattern}:{date}`). (2) In-memory `Set<string>` tracks fingerprints within each tail batch, eliminating same-batch race conditions (the BC #1228 scenario where 4 Gemini 503s in one batch created 4 separate issues).
 
-## Stubs & Partial Features (v0.3.8)
+## Stubs & Partial Features (v0.3.9)
 
 Config surfaces exist for these, but the wiring is incomplete. If you're asked to use any of these, implement the missing integration first and flag the gap to the user:
 

@@ -118,8 +118,64 @@ Custom patterns are checked after the built-in patterns. Each requires a `name` 
 When a new error is captured and GitHub is configured, cf-monitor creates an issue with:
 
 - **Title**: `[P1] worker-name: exception`
-- **Body**: markdown table with worker, outcome, priority, account, fingerprint, error message, and timestamp
 - **Labels**: `cf:error:exception`, `cf:priority:p1`, optionally `cf:transient`
+- **Body** with these sections (all conditional — only shown when data is available):
+
+| Section | Content |
+|---------|---------|
+| **Error** | Error name and message. JSON structured logs are auto-parsed for readability |
+| **Stack Trace** | From `TraceException.stack` (capped at 2000 chars) |
+| **Details** | Table: worker, event type (fetch/cron/queue with trigger info), outcome, priority, CPU/wall time, execution model, account, fingerprint, event timestamp, transient flag, request URL/method/status, DO ID |
+| **Logs** | Last 10 log entries as a table with relative timestamps and log levels |
+| **Truncation warning** | Shown when Cloudflare truncated logs at the 256KB limit |
+| **Investigation** | Deep links to CF Workers Dashboard and Workers Observability for the specific worker |
+
+Example issue body for a fetch handler error:
+
+```markdown
+### Error
+
+\`\`\`
+TypeError: Cannot read properties of undefined (reading 'status')
+\`\`\`
+
+### Stack Trace
+
+\`\`\`
+TypeError: Cannot read properties of undefined (reading 'status')
+    at handleResponse (worker.js:142:23)
+    at async fetch (worker.js:45:12)
+\`\`\`
+
+### Details
+
+| Field | Value |
+|-------|-------|
+| **Worker** | `my-api` |
+| **Event** | Fetch |
+| **Outcome** | exception |
+| **Priority** | P1 |
+| **CPU / Wall** | 42ms / 1,250ms |
+| **Account** | platform |
+| **Fingerprint** | `685f03d0` |
+| **Event Time** | 2026-04-15T07:03:44.087Z |
+| **Transient** | No |
+| **Request** | `POST https://api.example.com/data` |
+| **Response** | HTTP 500 |
+
+### Logs
+
+| Time | Level | Message |
+|------|-------|---------|
+| +10ms | info | Starting request handler |
+| +30ms | info | Querying database |
+| +50ms | error | Connection refused |
+
+### Investigation
+
+- [Worker Dashboard](https://dash.cloudflare.com/{account_id}/workers/services/view/my-api/production)
+- [Workers Observability](https://dash.cloudflare.com/{account_id}/workers/observability)
+```
 
 ### Issue labels
 

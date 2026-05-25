@@ -16,7 +16,7 @@ Task-oriented guides for each monitoring feature:
 
 | Guide | What it covers |
 |-------|----------------|
-| [Error collection](./guides/error-collection.md) | Fingerprinting, dedup, GitHub issues, priority labels, prerequisites |
+| [Error collection](./guides/error-collection.md) | Fingerprinting, dedup, enriched GitHub issues (stack traces, logs, observability), priority labels |
 | [Budgets & circuit breakers](./guides/budgets-and-circuit-breakers.md) | 4 layers of cost protection, per-invocation limits, auto-seeding |
 | [Cost protection](./guides/cost-protection.md) | The $4,868 story and how cf-monitor prevents it |
 | [Cost spike detection](./guides/cost-spike-detection.md) | Hourly spikes vs 24h baseline, Slack alerts, tuning |
@@ -41,7 +41,7 @@ Step-by-step instructions for specific tasks:
 - [FAQ](./faq/index.md) — installation, permissions, costs, fail-open behaviour, alerts, AI features, updates
 - [Security](./security.md) — admin auth, secrets, threat model, data exposure, SDK security
 - [Troubleshooting](./troubleshooting.md) — 14 common issues with solutions
-- [Changelog](../CHANGELOG.md) — version history (v0.1.0 to v0.3.8)
+- [Changelog](../CHANGELOG.md) — version history (v0.1.0 to v0.3.9)
 
 ## Internal Reports
 
