@@ -43,7 +43,8 @@ jobs:
         run: npx publint
 
       - name: Validate type resolution (attw)
-        run: npx @arethetypeswrong/cli --pack . --ignore-rules cjs-resolves-to-esm no-resolution
+        # attw + fflate@0.8.2 pinned via package.json overrides (fflate 0.8.3 broke attw, see arethetypeswrong/arethetypeswrong.github.io#258)
+        run: npm exec -- attw --pack . --ignore-rules cjs-resolves-to-esm no-resolution
 
       - name: Verify package contents
         run: |
