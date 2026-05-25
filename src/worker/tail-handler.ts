@@ -2,8 +2,11 @@ import { CAPTURABLE_OUTCOMES, KV, MAX_ISSUES_PER_SCRIPT_PER_DAY, MAX_ISSUES_PER_
 import type { MonitorWorkerEnv, TailOutcome } from '../types.js';
 import { computeFingerprint } from './errors/fingerprint.js';
 import { getTransientPatternName, matchTransientPattern } from './errors/patterns.js';
-import { createGitHubIssue } from './errors/github.js';
+import { createGitHubIssue, type LogEntry } from './errors/github.js';
 import { recordSelfTelemetry, recordHandlerError } from './self-monitor.js';
+
+const MAX_LOG_ENTRIES = 10;
+const MAX_STACK_LENGTH = 2000;
 
 /**
  * Process tail events from all tailed workers on this account.
@@ -58,8 +61,9 @@ async function processEvent(event: TraceItem, env: MonitorWorkerEnv, batchSeen: 
 		return;
 	}
 
-	// Extract error details
+	// Extract error details and trace context
 	const errorInfo = extractErrorInfo(event);
+	const traceContext = extractTraceContext(event);
 	const priority = PRIORITY_MAP[outcome] ?? 'P3';
 	const fingerprint = computeFingerprint(scriptName, outcome, errorInfo.message);
 
@@ -128,6 +132,8 @@ async function processEvent(event: TraceItem, env: MonitorWorkerEnv, batchSeen: 
 				errorName: errorInfo.name,
 				isTransient,
 				accountName: env.ACCOUNT_NAME,
+				...traceContext,
+				cfAccountId: env.CF_ACCOUNT_ID,
 			});
 
 			if (issueUrl) {
@@ -169,16 +175,26 @@ interface ErrorInfo {
 	message: string;
 }
 
-function extractErrorInfo(event: TraceItem): ErrorInfo {
-	// Look for exception in logs
-	for (const log of event.logs ?? []) {
-		if (log.level === 'error' && log.message.length > 0) {
-			const msg = log.message.map(String).join(' ');
-			return { name: 'Error', message: msg.slice(0, 500) };
-		}
-	}
+interface TraceContext {
+	cpuTimeMs?: number;
+	wallTimeMs?: number;
+	eventTimestamp?: number;
+	executionModel?: string;
+	truncated?: boolean;
+	stackTrace?: string;
+	eventType?: string;
+	requestUrl?: string;
+	requestMethod?: string;
+	responseStatus?: number;
+	cronExpression?: string;
+	queueName?: string;
+	queueBatchSize?: number;
+	durableObjectId?: string;
+	logHistory?: LogEntry[];
+}
 
-	// Look for exceptions array
+function extractErrorInfo(event: TraceItem): ErrorInfo {
+	// Look for exception in exceptions array first (has stack trace)
 	for (const exc of event.exceptions ?? []) {
 		return {
 			name: exc.name ?? 'Error',
@@ -186,7 +202,83 @@ function extractErrorInfo(event: TraceItem): ErrorInfo {
 		};
 	}
 
+	// Fall back to error logs
+	for (const log of event.logs ?? []) {
+		if (log.level === 'error' && log.message.length > 0) {
+			const msg = log.message.map(String).join(' ');
+			return { name: 'Error', message: msg.slice(0, 500) };
+		}
+	}
+
 	return { name: event.outcome ?? 'Error', message: `Worker ${event.outcome}` };
+}
+
+function extractTraceContext(event: TraceItem): TraceContext {
+	const ctx: TraceContext = {};
+
+	ctx.cpuTimeMs = event.cpuTime;
+	ctx.wallTimeMs = event.wallTime;
+	ctx.eventTimestamp = event.eventTimestamp ?? undefined;
+	ctx.executionModel = event.executionModel;
+	ctx.truncated = event.truncated || undefined;
+	ctx.durableObjectId = event.durableObjectId ?? undefined;
+
+	// Stack trace from first exception
+	if (event.exceptions?.length) {
+		const stack = event.exceptions[0]?.stack;
+		if (stack) {
+			ctx.stackTrace = stack.slice(0, MAX_STACK_LENGTH);
+		}
+	}
+
+	// Event type and trigger details
+	if (event.event) {
+		const e = event.event as Record<string, unknown>;
+		if ('request' in e) {
+			ctx.eventType = 'fetch';
+			const req = e.request as { url?: string; method?: string } | undefined;
+			if (req) {
+				ctx.requestUrl = req.url;
+				ctx.requestMethod = req.method;
+			}
+			const res = e.response as { status?: number } | undefined;
+			if (res?.status !== undefined) {
+				ctx.responseStatus = res.status;
+			}
+		} else if ('cron' in e) {
+			ctx.eventType = 'scheduled';
+			ctx.cronExpression = e.cron as string | undefined;
+		} else if ('queue' in e) {
+			ctx.eventType = 'queue';
+			ctx.queueName = e.queue as string | undefined;
+			ctx.queueBatchSize = e.batchSize as number | undefined;
+		} else if ('scheduledTime' in e && !('cron' in e)) {
+			ctx.eventType = 'alarm';
+		} else if ('rpcMethod' in e) {
+			ctx.eventType = 'rpc';
+		} else if ('getWebSocketEvent' in e) {
+			ctx.eventType = 'websocket';
+		} else if ('mailFrom' in e) {
+			ctx.eventType = 'email';
+		}
+	}
+
+	// Last N log entries across all levels
+	const logs = event.logs ?? [];
+	if (logs.length > 0) {
+		const entries: LogEntry[] = logs
+			.slice(-MAX_LOG_ENTRIES)
+			.map((log) => ({
+				level: log.level,
+				message: log.message.map(String).join(' ').slice(0, 300),
+				timestamp: log.timestamp,
+			}));
+		if (entries.length > 0) {
+			ctx.logHistory = entries;
+		}
+	}
+
+	return ctx;
 }
 
 /**
@@ -205,7 +297,7 @@ async function processSoftErrors(
 	for (const log of logs) {
 		if (log.level === 'error') {
 			const msg = log.message.map(String).join(' ').slice(0, 500);
-			await processLogEntry(env, scriptName, 'soft_error', msg, batchSeen);
+			await processLogEntry(env, event, scriptName, 'soft_error', msg, batchSeen);
 		} else if (log.level === 'warn') {
 			const msg = log.message.map(String).join(' ').slice(0, 500);
 			await storeWarningForDigest(env, scriptName, msg);
@@ -216,6 +308,7 @@ async function processSoftErrors(
 /** Process a soft error log entry — creates a GitHub issue like hard errors. */
 async function processLogEntry(
 	env: MonitorWorkerEnv,
+	event: TraceItem,
 	scriptName: string,
 	outcome: string,
 	message: string,
@@ -277,6 +370,9 @@ async function processLogEntry(
 	}
 	await env.CF_MONITOR_KV.put(lockKey, '1', { expirationTtl: 60 });
 
+	// Extract trace context for enriched issue
+	const traceContext = extractTraceContext(event);
+
 	// Create GitHub issue
 	if (env.GITHUB_REPO && env.GITHUB_TOKEN) {
 		try {
@@ -289,6 +385,8 @@ async function processLogEntry(
 				errorName: 'SoftError',
 				isTransient,
 				accountName: env.ACCOUNT_NAME,
+				...traceContext,
+				cfAccountId: env.CF_ACCOUNT_ID,
 			});
 
 			if (issueUrl) {

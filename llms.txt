@@ -12,12 +12,12 @@ cf-monitor wraps Cloudflare Workers with a single `monitor()` call, tracks every
 - [Security](https://github.com/littlebearapps/cf-monitor/blob/main/docs/security.md): Admin auth, secrets, threat model, data exposure
 - [Troubleshooting](https://github.com/littlebearapps/cf-monitor/blob/main/docs/troubleshooting.md): 16 common issues with solutions
 - [FAQ](https://github.com/littlebearapps/cf-monitor/blob/main/docs/faq/index.md): Installation, permissions, costs, fail-open behaviour, alerts, AI feature status, updates (also published at https://littlebearapps.com/help/cf-monitor/faq/ with FAQPage JSON-LD)
-- [Changelog](https://github.com/littlebearapps/cf-monitor/blob/main/CHANGELOG.md): Version history v0.1.0 to v0.3.8
+- [Changelog](https://github.com/littlebearapps/cf-monitor/blob/main/CHANGELOG.md): Version history v0.1.0 to v0.3.9
 - [Contributing](https://github.com/littlebearapps/cf-monitor/blob/main/CONTRIBUTING.md): Development setup and conventions
 
 ## Guides
 
-- [Error Collection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/error-collection.md): Prerequisites, fingerprinting, dedup, GitHub issues
+- [Error Collection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/error-collection.md): Prerequisites, fingerprinting, dedup, enriched GitHub issues with stack traces and observability context
 - [Budgets & Circuit Breakers](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/budgets-and-circuit-breakers.md): 4 layers of cost protection, auto-seeding
 - [Cost Protection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/cost-protection.md): The $4,868 billing incident and prevention
 - [Cost Spike Detection](https://github.com/littlebearapps/cf-monitor/blob/main/docs/guides/cost-spike-detection.md): Hourly spikes vs 24h baseline, Slack alerts
@@ -35,7 +35,7 @@ cf-monitor wraps Cloudflare Workers with a single `monitor()` call, tracks every
 - [Gatus Heartbeat](https://github.com/littlebearapps/cf-monitor/blob/main/docs/how-to/gatus-heartbeat.md): External uptime monitor for cf-monitor crons
 - [Custom Feature IDs](https://github.com/littlebearapps/cf-monitor/blob/main/docs/how-to/custom-feature-ids.md): featureId, featurePrefix, features map
 
-## Stubs & Partial Features (v0.3.8)
+## Stubs & Partial Features (v0.3.9)
 
 - AI features (pattern discovery, health reports, coverage auditor) — `src/worker/optional/*.ts` are stubs. Enabling `ai.*` flags is a no-op. Issues #8, #9, #10.
 - `monitoring.spike_threshold` YAML key — schema validates but hardcoded to 2.0 in source.

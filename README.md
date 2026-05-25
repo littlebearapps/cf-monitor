@@ -78,7 +78,7 @@ That's it. Worker name, feature IDs, bindings, and budgets are all auto-detected
 
 ## 🎯 Features
 
-- 🐛 **Error collection** — tail worker captures errors from every worker, deduplicates via fingerprint, and (when `GITHUB_TOKEN` is configured) creates GitHub issues with P0–P4 priority labels. Without GitHub configured, errors are still captured to Analytics Engine and surfaced via `GET /errors`
+- 🐛 **Error collection** — tail worker captures errors from every worker, deduplicates via fingerprint, and (when `GITHUB_TOKEN` is configured) creates detailed GitHub issues with P0–P4 priority labels. Issues include stack traces, CPU/wall time, request context, log history, event type (fetch/cron/queue), and deep links to the Cloudflare dashboard — enough context for a developer or AI agent to start debugging immediately. Without GitHub configured, errors are still captured to Analytics Engine and surfaced via `GET /errors`
 - 💰 **Feature budgets** — per-feature daily and monthly limits with automatic circuit breakers. Warned at 70%, stopped at 100%
 - 🔴 **Circuit breakers** — three-tier kill switches (feature, account, global) via KV. Auto-reset after configurable TTL
 - 🛡️ **Cost protection** — per-invocation limits prevent runaway loops. Catches the $5K bug on the first request
