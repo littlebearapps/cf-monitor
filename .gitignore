@@ -19,3 +19,6 @@ coverage/
 
 # Incoming
 incoming/
+
+# Untether outbox (delivered to Telegram, not committed)
+.untether-outbox/
