@@ -58,16 +58,13 @@ jobs:
         run: npx lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --allowed-schemes "https:"
 
       - name: Publish to npm
-        # Token-based publish via NPM_TOKEN repo secret.
-        # OIDC Trusted Publisher was attempted for v0.3.9 — provenance signing worked but
-        # npm registry returned 404 on PUT despite the trusted-publisher fields matching the
-        # OIDC token claims (org=littlebearapps, repo=cf-monitor, workflow=release.yml,
-        # env=empty). Reverted to token publish to unblock release; OIDC investigation
-        # tracked separately. Re-enable by restoring `--provenance` and removing
-        # NODE_AUTH_TOKEN once npm-side mismatch is identified and fixed.
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Authenticates via npm Trusted Publisher (OIDC) using the id-token: write permission above.
+        # Trusted Publisher entry on npmjs.com for @littlebearapps/cf-monitor delegates
+        # `npm publish` permission to this workflow (org=littlebearapps, repo=cf-monitor,
+        # workflow=release.yml, env=empty). --provenance attaches SLSA build provenance
+        # attestation visible as a verified-build badge on the npm package page.
+        # NPM_TOKEN repo secret can be revoked once the first OIDC publish succeeds.
+        run: npm publish --access public --provenance
 
       - name: Extract release notes from CHANGELOG
         run: |
