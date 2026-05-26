@@ -1,6 +1,6 @@
-# `docs/faq/index.md` — Marketing-Site FAQPage Source
+# `docs/faq/faq.md` — Marketing-Site FAQPage Source
 
-`docs/faq/index.md` is **not an ordinary doc**. It is the upstream source for the FAQPage JSON-LD schema rendered at <https://littlebearapps.com/help/cf-monitor/faq/>. The file was added in PR #104 (closes #103) and is consumed by the `littlebearapps/littlebearapps.com` repo's docs-sync pipeline.
+`docs/faq/faq.md` is **not an ordinary doc**. It is the upstream source for the FAQPage JSON-LD schema rendered at <https://littlebearapps.com/help/cf-monitor/faq/>. The file was added in PR #104 (closes #103) and is consumed by the `littlebearapps/littlebearapps.com` repo's docs-sync pipeline.
 
 ## Why it exists
 
@@ -10,14 +10,14 @@
 
 ## Do NOT
 
-- **Do not delete or rename** `docs/faq/index.md` or the `docs/faq/` directory. The marketing-site sync (`littlebearapps/littlebearapps.com`, `scripts/docs-sync.config.ts`, `cf-monitor` entry, `source: 'docs/faq'`) **hard-fails the build** if the upstream source is missing. Removing the file breaks the marketing site, not just cf-monitor.
-- **Do not move it** to `docs/faq.md` (single-file form) or another path without a coordinated PR in `littlebearapps.com` updating `docs-sync.config.ts`. The site-side PR must land **before** the upstream move, or the sync fails.
+- **Do not delete** `docs/faq/faq.md` or the `docs/faq/` directory. The marketing-site sync (`littlebearapps/littlebearapps.com`, `scripts/docs-sync.config.ts`, `cf-monitor` entry, `source: 'docs/faq'`) **hard-fails the build** if the upstream source is missing. Removing the file breaks the marketing site, not just cf-monitor.
+- **Do not move it out of the `docs/faq/` directory** (e.g. to `docs/faq.md` single-file form, or another top-level location) without a coordinated PR in `littlebearapps.com` updating `docs-sync.config.ts`. The site-side PR must land **before** the upstream move, or the sync fails. Within-directory renames (like `index.md` → `faq.md`) are safe because the sync uses `source: 'docs/faq'` (directory) and picks up whatever single `.md` file lives there.
 - **Do not strip the frontmatter**. The sync pipeline injects `category: faq`, `tool: cf-monitor`, `pubDate`, and other site fields automatically — but it relies on `title` + `description` being present in the upstream file. Keep both.
 - **Do not add a `category:` or `tool:` field** to the frontmatter yourself — the sync injects them. A duplicate field will conflict.
 
 ## When to update
 
-Update `docs/faq/index.md` whenever cf-monitor changes any of the user-facing surfaces the FAQ describes. Concrete triggers:
+Update `docs/faq/faq.md` whenever cf-monitor changes any of the user-facing surfaces the FAQ describes. Concrete triggers:
 
 | Change | FAQ section to revisit |
 |--------|------------------------|
@@ -51,20 +51,20 @@ If a change doesn't fit any existing question, consider adding a new Q. Don't pa
 6. **No placeholders** (`TODO`, `[placeholder]`, `XXX`, `FIXME`). The marketing-site reviewer treats the file as production content.
 7. **Verify before committing**:
    ```bash
-   grep -c '^## ' docs/faq/index.md             # should be ≥7
-   grep -nE 'TODO|XXX|FIXME' docs/faq/index.md  # should return nothing
+   grep -c '^## ' docs/faq/faq.md             # should be ≥7
+   grep -nE 'TODO|XXX|FIXME' docs/faq/faq.md  # should return nothing
    # Spot-check that every relative link resolves (../getting-started.md, etc.)
    ```
 
 ## Where it shows up downstream
 
-- **Source of truth** (this repo): `docs/faq/index.md` on `main`.
+- **Source of truth** (this repo): `docs/faq/faq.md` on `main`.
 - **Sync config** (other repo): `littlebearapps/littlebearapps.com`, `scripts/docs-sync.config.ts`, `cf-monitor` entry includes `{ source: 'docs/faq', category: 'faq' }`. **Do not modify the upstream filename without a coordinated PR there.**
 - **Public URL**: `https://littlebearapps.com/help/cf-monitor/faq/` (or whatever slug the sync produces — single-file directories typically map to the parent slug).
 - **Schema marker** (post-deploy verification): the rendered page contains `<script type="application/ld+json">` with `"@type":"FAQPage"`.
 
 ## Quick reference
 
-- **Read the file**: `docs/faq/index.md` (~170 lines, ~1900 words).
+- **Read the file**: `docs/faq/faq.md` (~170 lines, ~1900 words).
 - **In-repo discoverability**: linked from `docs/README.md` under "Reference".
 - **Change history**: PR #104 (initial scaffold, closes #103). Future changes should reference the relevant cf-monitor change PR/issue.
