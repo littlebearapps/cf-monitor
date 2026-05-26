@@ -129,9 +129,9 @@ cf-monitor/
 
 ## Documentation Policy
 
-`docs/faq/index.md` is **sync-managed** — it's the upstream source for the FAQPage JSON-LD schema rendered at <https://littlebearapps.com/help/cf-monitor/faq/> via the marketing-site docs-sync pipeline (`littlebearapps/littlebearapps.com`, `scripts/docs-sync.config.ts`, `cf-monitor` entry, `source: 'docs/faq'`).
+`docs/faq/faq.md` is **sync-managed** — it's the upstream source for the FAQPage JSON-LD schema rendered at <https://littlebearapps.com/help/cf-monitor/faq/> via the marketing-site docs-sync pipeline (`littlebearapps/littlebearapps.com`, `scripts/docs-sync.config.ts`, `cf-monitor` entry, `source: 'docs/faq'`).
 
-- **Do not delete, rename, or move** the file or its directory — the site sync hard-fails the build on a missing source. Any path change requires a coordinated PR in the marketing-site repo to land **first**.
+- **Do not delete or move out of `docs/faq/`** — the site sync hard-fails the build on a missing source. Within-directory renames (e.g. `index.md` → `faq.md`) are safe because the sync points at the directory and picks up the lone `.md` file. Moving to a different directory requires a coordinated PR in the marketing-site repo to land **first**.
 - **Frontmatter is `title` + `description` only.** The sync injects `category: faq`, `tool: cf-monitor`, and dates. Don't duplicate those fields.
 - **Update when user-facing surfaces change**: install steps, required CF/GitHub token scopes, secrets, data collection, fail-open semantics, costs, plan detection, CB reset, alerts, AI feature status, update/uninstall procedure. Keep answers terse and cross-link to authoritative source docs rather than restating them.
 - **Maintain ≥7 question-shaped H2s.** Below 2 the FAQPage schema doesn't fire.

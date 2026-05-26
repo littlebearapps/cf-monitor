@@ -27,6 +27,8 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - `ErrorIssueParams` interface extended with 15 optional fields — fully backward compatible
 - `extractErrorInfo()` now checks exceptions before error logs (exceptions have stack traces)
 - `processLogEntry()` accepts the full `TraceItem` event to extract trace context for soft errors
+- Renamed `docs/faq/index.md` → `docs/faq/faq.md` (#110). Marketing-site FAQ now publishes at the cleaner URL `https://littlebearapps.com/help/cf-monitor/faq/` instead of `/index/`. Sync uses `source: 'docs/faq'` (directory), so the marketing site auto-picks the new filename on next build.
+- Release workflow now publishes to npm via **OIDC Trusted Publisher** (configured on npmjs.com) with `--provenance`. Removes dependency on a long-lived `NPM_TOKEN` secret and attaches SLSA build provenance to each published version. `NPM_TOKEN` repo secret retained as a fallback until the first OIDC publish succeeds.
 
 ## [0.3.8] - 2026-04-15
 

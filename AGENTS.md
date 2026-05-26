@@ -52,7 +52,7 @@ cf-monitor/
 
 ## Documentation Policy
 
-- **`docs/faq/index.md` is sync-managed.** It is the upstream source for the FAQPage JSON-LD schema rendered at <https://littlebearapps.com/help/cf-monitor/faq/>. The marketing site's docs-sync pipeline (`littlebearapps/littlebearapps.com`, `scripts/docs-sync.config.ts`) hard-fails the build if the source is missing or moved. **Do not delete, rename, or relocate** without a coordinated PR in the marketing-site repo.
+- **`docs/faq/faq.md` is sync-managed.** It is the upstream source for the FAQPage JSON-LD schema rendered at <https://littlebearapps.com/help/cf-monitor/faq/>. The marketing site's docs-sync pipeline (`littlebearapps/littlebearapps.com`, `scripts/docs-sync.config.ts`, `source: 'docs/faq'`) hard-fails the build if the source is missing. **Do not delete or move out of `docs/faq/`** without a coordinated PR in the marketing-site repo. Within-directory renames are safe.
 - **Update the FAQ when user-facing surfaces change**: install steps, required token scopes, secrets, data collection, fail-open behaviour, costs, plan detection, CB reset semantics, alert channels, AI feature status, update/uninstall procedure. Keep answers terse and link to the authoritative source doc rather than restating it. Maintain ≥7 question-shaped H2s. See `.claude/rules/docs-faq.md` for the full editorial rules.
 
 ## Key Conventions

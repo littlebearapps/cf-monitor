@@ -58,9 +58,12 @@ jobs:
         run: npx lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --allowed-schemes "https:"
 
       - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Authenticates via npm Trusted Publisher (OIDC) using id-token: write permission above.
+        # Configured on npmjs.com → @littlebearapps/cf-monitor → Trusted Publishers → GitHub Actions.
+        # --provenance attaches SLSA build provenance attestation visible on the npm package page.
+        # NPM_TOKEN env var intentionally absent; remove the NPM_TOKEN repo secret once the first
+        # OIDC publish has succeeded.
+        run: npm publish --access public --provenance
 
       - name: Extract release notes from CHANGELOG
         run: |
