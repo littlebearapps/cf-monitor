@@ -9,6 +9,7 @@ import {
 	getTestEnv,
 	setupTestResources,
 	teardownTestResources,
+	TEST_ADMIN_TOKEN,
 	type TestResources,
 } from './helpers.js';
 
@@ -34,14 +35,18 @@ export async function setup(): Promise<void> {
 	// Clear any stale CB state from previous runs (KV namespace may be reused)
 	try {
 		console.log('[integration:setup] Clearing stale CB state...');
+		const adminHeaders = {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${TEST_ADMIN_TOKEN}`,
+		};
 		await fetch(`${resources.monitorWorkerUrl}/admin/cb/reset`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: adminHeaders,
 			body: JSON.stringify({ featureId: 'test-cf-monitor-consumer:fetch:GET:api-test' }),
 		});
 		await fetch(`${resources.monitorWorkerUrl}/admin/cb/account`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: adminHeaders,
 			body: JSON.stringify({ status: 'clear' }),
 		});
 	} catch {

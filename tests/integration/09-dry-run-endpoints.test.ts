@@ -9,7 +9,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import {
 	hasCredentials,
 	loadTestResources,
-	fetchWorkerPost,
+	fetchAdminPost,
 	type TestResources,
 } from './helpers.js';
 
@@ -30,7 +30,7 @@ beforeAll(() => {
 
 describe.skipIf(SKIP)('GitHub issue dry-run (#34)', () => {
 	it('returns correct issue title and labels for exception', async () => {
-		const resp = await fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
+		const resp = await fetchAdminPost(monitorUrl, '/admin/test/github-dry-run', {
 			scriptName: 'test-worker',
 			outcome: 'exception',
 			errorMessage: 'Connection timeout',
@@ -55,7 +55,7 @@ describe.skipIf(SKIP)('GitHub issue dry-run (#34)', () => {
 	}, 15_000);
 
 	it('detects transient patterns', async () => {
-		const resp = await fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
+		const resp = await fetchAdminPost(monitorUrl, '/admin/test/github-dry-run', {
 			scriptName: 'test-worker',
 			outcome: 'exception',
 			errorMessage: 'Rate limit exceeded: 429 Too Many Requests',
@@ -70,12 +70,12 @@ describe.skipIf(SKIP)('GitHub issue dry-run (#34)', () => {
 	it('produces stable fingerprints (same error → same hash)', async () => {
 		// Same input twice should produce identical fingerprints
 		const [resp1, resp2] = await Promise.all([
-			fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
+			fetchAdminPost(monitorUrl, '/admin/test/github-dry-run', {
 				scriptName: 'test-worker',
 				outcome: 'exception',
 				errorMessage: 'Database connection failed',
 			}),
-			fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
+			fetchAdminPost(monitorUrl, '/admin/test/github-dry-run', {
 				scriptName: 'test-worker',
 				outcome: 'exception',
 				errorMessage: 'Database connection failed',
@@ -89,7 +89,7 @@ describe.skipIf(SKIP)('GitHub issue dry-run (#34)', () => {
 		expect(body1.fingerprint).toMatch(/^[0-9a-f]{8}$/);
 
 		// Different error → different fingerprint
-		const resp3 = await fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
+		const resp3 = await fetchAdminPost(monitorUrl, '/admin/test/github-dry-run', {
 			scriptName: 'test-worker',
 			outcome: 'exception',
 			errorMessage: 'Redis timeout exceeded',
@@ -99,7 +99,7 @@ describe.skipIf(SKIP)('GitHub issue dry-run (#34)', () => {
 	}, 15_000);
 
 	it('formats issue body with markdown table and fingerprint', async () => {
-		const resp = await fetchWorkerPost(monitorUrl, '/admin/test/github-dry-run', {
+		const resp = await fetchAdminPost(monitorUrl, '/admin/test/github-dry-run', {
 			scriptName: 'monitor-test',
 			outcome: 'exceededCpu',
 			errorMessage: 'CPU time exceeded',
@@ -120,7 +120,7 @@ describe.skipIf(SKIP)('GitHub issue dry-run (#34)', () => {
 
 describe.skipIf(SKIP)('Slack alert dry-run (#35)', () => {
 	it('budget warning payload has correct structure', async () => {
-		const resp = await fetchWorkerPost(monitorUrl, '/admin/test/slack-dry-run', {
+		const resp = await fetchAdminPost(monitorUrl, '/admin/test/slack-dry-run', {
 			type: 'budget-warning',
 			featureId: 'test:fetch:GET:api',
 			metric: 'kv_reads',
@@ -144,7 +144,7 @@ describe.skipIf(SKIP)('Slack alert dry-run (#35)', () => {
 	}, 15_000);
 
 	it('critical budget warning uses rotating_light emoji', async () => {
-		const resp = await fetchWorkerPost(monitorUrl, '/admin/test/slack-dry-run', {
+		const resp = await fetchAdminPost(monitorUrl, '/admin/test/slack-dry-run', {
 			type: 'budget-warning',
 			featureId: 'test:fetch:GET:api',
 			metric: 'kv_reads',
@@ -159,7 +159,7 @@ describe.skipIf(SKIP)('Slack alert dry-run (#35)', () => {
 	}, 15_000);
 
 	it('error alert payload has correct structure', async () => {
-		const resp = await fetchWorkerPost(monitorUrl, '/admin/test/slack-dry-run', {
+		const resp = await fetchAdminPost(monitorUrl, '/admin/test/slack-dry-run', {
 			type: 'error-alert',
 			scriptName: 'test-worker',
 			outcome: 'exception',

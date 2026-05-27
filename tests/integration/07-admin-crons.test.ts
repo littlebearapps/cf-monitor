@@ -7,7 +7,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import {
 	hasCredentials,
 	loadTestResources,
-	fetchWorkerPost,
+	fetchAdminPost,
 	fetchWorker,
 	writeTestKVKey,
 	waitForAEData,
@@ -29,7 +29,7 @@ beforeAll(() => {
 
 describe.skipIf(SKIP)('admin cron triggers', () => {
 	it('POST /admin/cron/synthetic-health completes successfully', async () => {
-		const resp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cron/synthetic-health', {});
+		const resp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cron/synthetic-health', {});
 		expect(resp.status).toBe(200);
 
 		const body = await resp.json() as { ok: boolean; cron: string; durationMs: number };
@@ -39,7 +39,7 @@ describe.skipIf(SKIP)('admin cron triggers', () => {
 	}, 30_000);
 
 	it('POST /admin/cron/worker-discovery discovers workers', async () => {
-		const resp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cron/worker-discovery', {});
+		const resp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cron/worker-discovery', {});
 		expect(resp.status).toBe(200);
 
 		const body = await resp.json() as { ok: boolean; cron: string };
@@ -62,7 +62,7 @@ describe.skipIf(SKIP)('admin cron triggers', () => {
 
 	it('POST /admin/cron/gap-detection completes after discovery', async () => {
 		// Gap detection uses the worker list populated by worker-discovery
-		const resp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cron/gap-detection', {});
+		const resp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cron/gap-detection', {});
 		expect(resp.status).toBe(200);
 
 		const body = await resp.json() as { ok: boolean; cron: string };
@@ -70,14 +70,14 @@ describe.skipIf(SKIP)('admin cron triggers', () => {
 	}, 20_000);
 
 	it('POST /admin/cron/cost-spike completes', async () => {
-		const resp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cron/cost-spike', {});
+		const resp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cron/cost-spike', {});
 		// May return 200 (ok) or 500 (no baseline data) — both are acceptable for a fresh account
 		const body = await resp.json() as { ok: boolean; cron: string };
 		expect(body.cron).toBe('cost-spike');
 	}, 20_000);
 
 	it('invalid cron name returns 400 with available list', async () => {
-		const resp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cron/nonexistent', {});
+		const resp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cron/nonexistent', {});
 		expect(resp.status).toBe(400);
 
 		const body = await resp.json() as { error: string; available: string[] };
@@ -89,7 +89,7 @@ describe.skipIf(SKIP)('admin cron triggers', () => {
 	}, 10_000);
 
 	it('POST /admin/cron/metrics collects CF GraphQL metrics (#37)', async () => {
-		const resp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cron/metrics', {});
+		const resp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cron/metrics', {});
 		expect(resp.status).toBe(200);
 
 		const body = await resp.json() as { ok: boolean; cron: string; durationMs: number };
@@ -128,7 +128,7 @@ describe.skipIf(SKIP)('admin cron triggers', () => {
 		// Wait for KV propagation
 		await sleep(3000);
 
-		const resp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cron/daily-rollup', {});
+		const resp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cron/daily-rollup', {});
 		expect(resp.status).toBe(200);
 
 		const body = await resp.json() as { ok: boolean; cron: string };

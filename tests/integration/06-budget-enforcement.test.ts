@@ -11,7 +11,7 @@ import {
 	writeTestKVKey,
 	readTestKVKey,
 	deleteTestKVKey,
-	fetchWorkerPost,
+	fetchAdminPost,
 	sleep,
 	type TestEnv,
 	type TestResources,
@@ -73,7 +73,7 @@ describe.skipIf(SKIP)('budget enforcement: seed → cron → CB trip', () => {
 
 	it('budget-check cron trips CB for exceeded feature', async () => {
 		// Trigger the budget-check cron via admin endpoint
-		const resp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cron/budget-check', {});
+		const resp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cron/budget-check', {});
 		expect(resp.status).toBe(200);
 
 		const body = await resp.json() as { ok: boolean; cron: string };
@@ -90,7 +90,7 @@ describe.skipIf(SKIP)('budget enforcement: seed → cron → CB trip', () => {
 
 	it('cleanup: reset CB via worker admin endpoint', async () => {
 		// Use worker-side reset (instant propagation) instead of REST API write
-		const resp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cb/reset', {
+		const resp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cb/reset', {
 			featureId: TEST_FEATURE,
 		});
 		expect(resp.status).toBe(200);

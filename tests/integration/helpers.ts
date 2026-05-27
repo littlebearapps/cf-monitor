@@ -58,6 +58,8 @@ export const TEST_CONSUMER_NAME = 'test-cf-monitor-consumer';
 const TEST_KV_TITLE = 'test-cf-monitor';
 const TEST_AE_DATASET = 'test-cf-monitor';
 export const TEST_WEBHOOK_SECRET = 'test-webhook-secret-12345';
+/** Admin token injected into test-cf-monitor wrangler config — required for /admin/* POSTs since v0.3.3. */
+export const TEST_ADMIN_TOKEN = 'test-admin-token-67890abcdef01234567890abcdef0';
 
 const ENV_FILE = '/tmp/cf-monitor-integration-env.json';
 
@@ -106,6 +108,7 @@ export async function setupTestResources(env: TestEnv): Promise<TestResources> {
 	const monitorConfig = JSON.parse(monitorConfigStr.replace(/^\/\/.*\n/, ''));
 	monitorConfig.vars.CLOUDFLARE_API_TOKEN = env.apiToken;
 	monitorConfig.vars.GITHUB_WEBHOOK_SECRET = TEST_WEBHOOK_SECRET;
+	monitorConfig.vars.ADMIN_TOKEN = TEST_ADMIN_TOKEN;
 	// Intentionally NO GITHUB_REPO, GITHUB_TOKEN, SLACK_WEBHOOK_URL
 	writeFileSync(join(monitorDir, 'wrangler.jsonc'), JSON.stringify(monitorConfig, null, 2));
 
@@ -357,6 +360,19 @@ export async function fetchWorkerPost(
 			...headers,
 		},
 		body: JSON.stringify(body),
+	});
+}
+
+/** POST to an /admin/* endpoint with the injected TEST_ADMIN_TOKEN bearer. */
+export async function fetchAdminPost(
+	baseUrl: string,
+	path: string,
+	body: unknown = {},
+	extraHeaders?: Record<string, string>
+): Promise<Response> {
+	return fetchWorkerPost(baseUrl, path, body, {
+		Authorization: `Bearer ${TEST_ADMIN_TOKEN}`,
+		...extraHeaders,
 	});
 }
 
