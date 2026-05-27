@@ -2,6 +2,7 @@ import type { MonitorWorkerEnv } from '../types.js';
 import { recordCronExecution, recordHandlerError, recordSelfTelemetry, checkCronStaleness } from './self-monitor.js';
 import { collectAccountMetrics } from './crons/collect-metrics.js';
 import { collectAccountUsage } from './crons/collect-account-usage.js';
+import { collectAiGatewayUsage } from './crons/collect-ai-gateway-usage.js';
 import { checkBudgets } from './crons/budget-check.js';
 import { detectGaps } from './crons/gap-detection.js';
 import { detectCostSpikes } from './crons/cost-spike.js';
@@ -62,6 +63,7 @@ export async function handleScheduled(
 			const results = await Promise.allSettled([
 				runAndRecord(env, 'collect-metrics', () => collectAccountMetrics(env)),
 				runAndRecord(env, 'collect-account-usage', () => collectAccountUsage(env)),
+				runAndRecord(env, 'collect-ai-gateway-usage', () => collectAiGatewayUsage(env)),
 				runAndRecord(env, 'budget-check', () => checkBudgets(env)),
 				runAndRecord(env, 'synthetic-health', () => runSyntheticHealthCheck(env)),
 			]);

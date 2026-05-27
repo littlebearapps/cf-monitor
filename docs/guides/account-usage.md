@@ -14,9 +14,11 @@ The `collect-account-usage` cron runs hourly (`0 * * * *`). It queries the CF Gr
 | R2 | `r2OperationsAdaptiveGroups` | Class A (mutations), Class B (reads) |
 | Durable Objects | `durableObjectsInvocationsAdaptiveGroups` | requests |
 
-### Services NOT available
+### Services NOT available via GraphQL
 
-AI Gateway, Vectorize, Queues, Workflows, and Hyperdrive do not have GraphQL Analytics datasets. They use REST APIs or dashboard-only metrics and may be added in a future version.
+Vectorize, Queues, Workflows, and Hyperdrive do not have GraphQL Analytics datasets. They use REST APIs or dashboard-only metrics and may be added in a future version.
+
+AI Gateway is collected via its own **REST Logs API** by a separate cron (`collect-ai-gateway-usage`) — see [AI Gateway usage](#ai-gateway-usage) below.
 
 ### Query isolation
 
@@ -89,3 +91,113 @@ Uses the same `CLOUDFLARE_API_TOKEN` as worker discovery — no additional token
 **Missing services in output**: If a service has zero activity in the last 24 hours, it won't appear in the snapshot. This is correct behaviour.
 
 **GraphQL errors in logs**: The CF GraphQL API occasionally returns transient errors. cf-monitor logs these as warnings and retries on the next hourly cycle. Individual service failures don't affect other services.
+
+## AI Gateway usage
+
+AI Gateway is a special case: Cloudflare doesn't expose its usage via GraphQL Analytics, but it does expose a **per-request log REST API**. The `collect-ai-gateway-usage` cron runs hourly (alongside the GraphQL collection) and pulls the previous hour of logs across all gateways on the account.
+
+### How it works
+
+For each gateway returned by `GET /accounts/{id}/ai-gateway/gateways`, the cron paginates `GET /accounts/{id}/ai-gateway/gateways/{gw}/logs?start_date=...&end_date=...` (up to 5 pages × 1000 logs/page per gateway per hour — hot gateways trigger a Slack `ai-gateway-pagecap` alert). Each log row contributes to an in-memory aggregate keyed by `(gateway_id, provider, model)`:
+
+| Field | Source |
+|-------|--------|
+| `requests` | row count |
+| `tokens_in`, `tokens_out` | summed per-row fields |
+| `cost` | summed per-row `cost` field (USD, pass-through pricing from CF) |
+| `cached` | count of rows with `cached === true` |
+| `errors` | count of rows with `success === false` |
+| `p50_duration_ms` | median of per-row `duration` fields, sorted in-memory |
+
+Aggregates are written **per (gateway, provider, model)** as a row in Analytics Engine (positions 20–26 in AE_FIELDS), and merged into a daily KV blob at `usage:account:ai-gateway:{YYYY-MM-DD}` (32-day TTL). Cross-hour p50 is approximated by a request-weighted average of per-hour p50s — exact percentiles across an entire day aren't possible without storing all raw durations.
+
+### Token scope
+
+The cron requires the **AI Gateway: Read** permission on your `CLOUDFLARE_API_TOKEN`. Without it, the call returns 403 and the cron logs once per UTC day before skipping — fail-open semantics, identical to the `Account Settings: Read` handling in plan detection.
+
+### Storage and cost
+
+| Resource | Per-hour cost on a typical account |
+|----------|------------------------------------|
+| REST API calls | 1 list-gateways + ≤ 5 log pages per gateway = ~6–11 requests/hour (well under CF's 1200 req/5 min token rate limit) |
+| KV writes | 1 merged daily blob/hour = 24/day |
+| AE writes | 1 per distinct `(gateway, provider, model)` per hour. e.g. Platform account: ~6/hour, ~144/day. |
+
+No new D1, no Queues. cf-monitor's own AE writes still sit well inside the 100M/month free tier.
+
+### API
+
+```
+GET /usage              → service usage incl. aiGateway totals (requests, tokens, cost, cached, errors)
+GET /usage/ai-gateway   → full per-gateway/provider/model breakdown for today
+GET /usage/ai-gateway?date=2026-05-20   → same for a specific day (last 32 days only)
+```
+
+Example `/usage/ai-gateway` response:
+
+```json
+{
+  "account": "platform",
+  "date": "2026-05-27",
+  "status": "ok",
+  "snapshot": {
+    "date": "2026-05-27",
+    "gateways": {
+      "platform": {
+        "providers": {
+          "openai": {
+            "models": {
+              "gpt-4o": {
+                "requests": 412,
+                "tokens_in": 8400,
+                "tokens_out": 2100,
+                "cost": 0.084,
+                "cached": 36,
+                "errors": 2,
+                "p50_duration_ms": 320
+              }
+            }
+          },
+          "google-ai-studio": {
+            "models": {
+              "gemini-2.5-flash-lite": {
+                "requests": 1280,
+                "tokens_in": 24000,
+                "tokens_out": 12000,
+                "cost": 0.018,
+                "cached": 0,
+                "errors": 4,
+                "p50_duration_ms": 180
+              }
+            }
+          }
+        }
+      }
+    },
+    "totals": {
+      "requests": 1692,
+      "tokens_in": 32400,
+      "tokens_out": 14100,
+      "cost": 0.102,
+      "cached": 36,
+      "errors": 6
+    },
+    "lastUpdated": 1735000000000,
+    "disclaimer": "First-party Cloudflare AI Gateway logs..."
+  },
+  "timestamp": 1735000000000
+}
+```
+
+### Manual trigger
+
+```bash
+curl -X POST https://cf-monitor.YOUR_SUBDOMAIN.workers.dev/admin/cron/collect-ai-gateway-usage \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+### Caveats
+
+- The 5-page-per-hour cap is a safety stop, not a limit on Cloudflare's side. If a gateway processes > 5000 requests in a single hour, the page cap is hit and a Slack alert fires (`ai-gateway-pagecap`). The truncation only affects that hour's aggregate; the next hour starts fresh. Future versions may make the cap configurable.
+- The `cost` field reflects what Cloudflare's gateway captured at request time — typically the provider's published per-token rate, with no markup. Custom cost overrides via the `cf-aig-custom-cost` header are honoured. Cloudflare's [AI Gateway pricing docs](https://developers.cloudflare.com/ai-gateway/) are authoritative.
+- The cron itself is fail-open: any error (network, 401/403, schema mismatch, JSON parse failure) is logged and the worker continues. The consumer worker invoking AI Gateway is never affected.

@@ -166,6 +166,95 @@ describe('handleFetch', () => {
 		const resp = await handleFetch(createRequest('/self-health'), env, createMockCtx());
 		expect(resp.status).toBe(503);
 	});
+
+	// =========================================================================
+	// AI Gateway routes (v0.4.0)
+	// =========================================================================
+
+	it('GET /usage/ai-gateway returns no_data when KV blob missing', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const resp = await handleFetch(createRequest('/usage/ai-gateway'), env, createMockCtx());
+
+		expect(resp.status).toBe(200);
+		const body = await resp.json() as Record<string, unknown>;
+		expect(body.status).toBe('no_data');
+		expect(body.account).toBe('test-account');
+	});
+
+	it('GET /usage/ai-gateway returns snapshot when KV blob present', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const today = new Date().toISOString().slice(0, 10);
+		const snapshot = {
+			date: today,
+			gateways: {
+				platform: {
+					providers: {
+						openai: {
+							models: {
+								'gpt-4o': { requests: 5, tokens_in: 250, tokens_out: 125, cost: 0.075, cached: 1, errors: 0, p50_duration_ms: 320 },
+							},
+						},
+					},
+				},
+			},
+			totals: { requests: 5, tokens_in: 250, tokens_out: 125, cost: 0.075, cached: 1, errors: 0 },
+			lastUpdated: Date.now(),
+			disclaimer: 'test',
+		};
+		await env.CF_MONITOR_KV.put(`${KV.USAGE_ACCOUNT_AI_GATEWAY}${today}`, JSON.stringify(snapshot));
+
+		const resp = await handleFetch(createRequest('/usage/ai-gateway'), env, createMockCtx());
+		expect(resp.status).toBe(200);
+		const body = await resp.json() as { status: string; snapshot: typeof snapshot };
+		expect(body.status).toBe('ok');
+		expect(body.snapshot.totals.requests).toBe(5);
+	});
+
+	it('GET /usage/ai-gateway rejects malformed date param', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const resp = await handleFetch(createRequest('/usage/ai-gateway?date=not-a-date'), env, createMockCtx());
+		expect(resp.status).toBe(400);
+	});
+
+	it('GET /usage/ai-gateway rejects dates older than 32 days', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const old = new Date(Date.now() - 40 * 86_400_000).toISOString().slice(0, 10);
+		const resp = await handleFetch(createRequest(`/usage/ai-gateway?date=${old}`), env, createMockCtx());
+		expect(resp.status).toBe(400);
+	});
+
+	it('GET /usage merges AI Gateway totals into services.aiGateway when present', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const today = new Date().toISOString().slice(0, 10);
+		// Seed the GraphQL snapshot
+		await env.CF_MONITOR_KV.put(`${KV.USAGE_ACCOUNT}${today}`, JSON.stringify({
+			collected_at: new Date().toISOString(),
+			disclaimer: 'gql',
+			services: {
+				workers: { requests: 100, cpuMs: 5000 },
+			},
+		}));
+		// Seed the AI Gateway snapshot
+		await env.CF_MONITOR_KV.put(`${KV.USAGE_ACCOUNT_AI_GATEWAY}${today}`, JSON.stringify({
+			date: today,
+			gateways: {},
+			totals: { requests: 12, tokens_in: 1000, tokens_out: 500, cost: 0.42, cached: 2, errors: 1 },
+			lastUpdated: Date.now(),
+			disclaimer: 'ai',
+		}));
+
+		const resp = await handleFetch(createRequest('/usage'), env, createMockCtx());
+		const body = await resp.json() as { usage: { services: Record<string, Record<string, number>> } };
+		expect(body.usage.services.aiGateway).toEqual({
+			requests: 12,
+			tokens_in: 1000,
+			tokens_out: 500,
+			cost: 0.42,
+			cached: 2,
+			errors: 1,
+		});
+		expect(body.usage.services.workers).toEqual({ requests: 100, cpuMs: 5000 });
+	});
 });
 
 describe('GitHub webhook (#22)', () => {

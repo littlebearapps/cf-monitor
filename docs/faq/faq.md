@@ -55,6 +55,10 @@ Strongly recommended (especially on Workers Free):
 
 - **Account Settings: Read** — auto-detect Free vs Paid plan and align monthly budgets to your billing cycle
 
+Optional, only if you use AI Gateway:
+
+- **AI Gateway: Read** — pull per-request logs from each gateway and roll them up into per-(gateway, provider, model) AE rows + a daily KV blob. Without this scope, AI Gateway collection silently skips and logs a daily warning. See [Account usage — AI Gateway](../guides/account-usage.md#ai-gateway-usage) for the data shape and cost guard.
+
 If your token lacks `Account Settings: Read`, cf-monitor silently assumes you're on **Workers Paid** and applies Paid-plan budget defaults — which are roughly 10× higher than Free-plan limits. On a Free account that effectively disables most budget protection. See [Plan detection](../guides/plan-detection.md) for the full impact and how to add the permission.
 
 For optional integrations:
@@ -72,6 +76,7 @@ cf-monitor is observability for *your own infrastructure*, not user analytics. I
 - **Error fingerprints** — captured from Worker tail events. Messages are normalised (UUIDs, timestamps, hex IDs, IPs, large numbers replaced with placeholders) before fingerprinting, and truncated to 500 characters. Stored in **KV** as `err:fp:<fingerprint>` mapping to a GitHub issue URL when one exists.
 - **Circuit breaker state, budget counters, plan/billing cache, worker registry** — all in **KV**, all under versioned key prefixes (`cb:v1:`, `budget:`, `config:`, `workers:`).
 - **Account-wide usage** — hourly GraphQL pull for Workers, D1, KV, R2, and Durable Objects. Daily snapshots stored in KV (`usage:account:<date>`, 32-day TTL).
+- **AI Gateway usage** (v0.4.0, requires `AI Gateway: Read`) — hourly REST log pull for each gateway, aggregated by `(gateway, provider, model)` into AE rows + a daily KV blob (`usage:account:ai-gateway:<date>`, 32-day TTL). Aggregates only — no raw prompts or responses are persisted; cf-monitor reads `tokens_in`, `tokens_out`, `cost`, `cached`, `success`, and `duration` and discards the rest. See [AI Gateway usage](../guides/account-usage.md#ai-gateway-usage).
 
 Everything stays inside your Cloudflare account. There is no central LBA service receiving telemetry, no third-party tracker, no outbound traffic except the optional integrations *you* configure (GitHub issues, Slack webhooks, Gatus heartbeats). Read-only `GET` endpoints (`/status`, `/errors`, `/budgets`, `/workers`) deliberately omit the account ID, billing period, and full worker names to reduce reconnaissance value.
 

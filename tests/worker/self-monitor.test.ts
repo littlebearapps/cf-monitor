@@ -181,15 +181,16 @@ describe('recordSelfTelemetry', () => {
 		expect(dp.blobs[1]).toBe('self:100:0');
 	});
 
-	it('writes doubles[0] = 1 and rest zeros, 20 total', async () => {
+	it('writes doubles[0] = 1 and rest zeros, AE_FIELD_COUNT total', async () => {
 		const { recordSelfTelemetry } = await import('../../src/worker/self-monitor.js');
+		const { AE_FIELD_COUNT } = await import('../../src/constants.js');
 
 		recordSelfTelemetry(env, 'gap-detection', 100, true);
 
 		const dp = env.CF_MONITOR_AE._dataPoints[0];
-		expect(dp.doubles).toHaveLength(20);
+		expect(dp.doubles).toHaveLength(AE_FIELD_COUNT);
 		expect(dp.doubles[0]).toBe(1);
-		for (let i = 1; i < 20; i++) {
+		for (let i = 1; i < AE_FIELD_COUNT; i++) {
 			expect(dp.doubles[i]).toBe(0);
 		}
 	});

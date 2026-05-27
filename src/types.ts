@@ -255,11 +255,65 @@ export interface ServiceUsageSnapshot {
 		r2: { classA: number; classB: number; storageMb?: number };
 		workers: { requests: number; cpuMs: number };
 		ai: { neurons: number; requests: number };
-		aiGateway: { requests: number };
+		/**
+		 * AI Gateway hourly aggregate (v0.4.0).
+		 * Extended from `{ requests }` — additional fields are optional so callers
+		 * predating v0.4.0 continue to type-check.
+		 */
+		aiGateway: {
+			requests: number;
+			tokens_in?: number;
+			tokens_out?: number;
+			cost?: number;
+			cached?: number;
+			errors?: number;
+		};
 		durableObjects: { requests: number; storedBytes: number };
 		vectorize: { queries: number };
 		queues: { produced: number; consumed: number };
 	}>;
+}
+
+// =============================================================================
+// AI GATEWAY USAGE SNAPSHOT (v0.4.0)
+// =============================================================================
+
+/** Per-model aggregate for an AI Gateway provider. */
+export interface AiGatewayModelAggregate {
+	requests: number;
+	tokens_in: number;
+	tokens_out: number;
+	cost: number;
+	cached: number;
+	errors: number;
+	p50_duration_ms: number;
+}
+
+/** Daily AI Gateway usage breakdown, written to KV by collect-ai-gateway-usage. */
+export interface AiGatewayUsageSnapshot {
+	/** YYYY-MM-DD (UTC). */
+	date: string;
+	/** Keyed by gateway id. */
+	gateways: Record<string, {
+		/** Keyed by provider name (e.g. 'openai', 'google-ai-studio'). */
+		providers: Record<string, {
+			/** Keyed by model name. */
+			models: Record<string, AiGatewayModelAggregate>;
+		}>;
+	}>;
+	/** Account-wide totals (sum across gateways/providers/models). */
+	totals: {
+		requests: number;
+		tokens_in: number;
+		tokens_out: number;
+		cost: number;
+		cached: number;
+		errors: number;
+	};
+	/** Last update epoch ms. */
+	lastUpdated: number;
+	/** Pricing pass-through note from CF. */
+	disclaimer: string;
 }
 
 // =============================================================================

@@ -57,7 +57,7 @@ cf-monitor uses up to 6 secrets, all set via `npx cf-monitor secret set <NAME>`:
 
 | Secret | Required | Purpose | Minimum scope |
 |--------|----------|---------|---------------|
-| `CLOUDFLARE_API_TOKEN` | Yes | GraphQL metrics, worker discovery, plan detection | Workers KV Storage: Edit, Account Analytics: Read, Workers Scripts: Edit. Optional: Account Settings: Read (for plan detection) |
+| `CLOUDFLARE_API_TOKEN` | Yes | GraphQL metrics, worker discovery, plan detection, AI Gateway logs | Workers KV Storage: Edit, Account Analytics: Read, Workers Scripts: Edit. Optional: Account Settings: Read (plan detection), AI Gateway: Read (per-request cost/tokens collection) |
 | `ADMIN_TOKEN` | Recommended | Admin endpoint authentication | N/A — self-generated random string |
 | `GITHUB_TOKEN` | Optional | Create issues for captured errors | Fine-grained PAT with `issues: write` on the target repo. Classic PATs need `public_repo` (public) or `repo` (private). **Do not use full `repo` scope if `issues: write` suffices.** |
 | `SLACK_WEBHOOK_URL` | Optional | Budget warnings, error alerts, gap alerts | N/A — Slack incoming webhook URL |
@@ -100,7 +100,8 @@ These endpoints are publicly accessible (no auth required):
 | `GET /budgets` | Active circuit breakers by feature ID | Budget limits, usage numbers |
 | `GET /workers` | Worker names and count | Worker code, bindings |
 | `GET /plan` | Plan type, billing period, allowances | Account ID |
-| `GET /usage` | Per-service usage numbers | Account ID |
+| `GET /usage` | Per-service usage numbers (incl. AI Gateway aggregate cost) | Account ID, per-request prompts/responses |
+| `GET /usage/ai-gateway` | Per-gateway/provider/model aggregate (requests, tokens, USD cost, cached %, error %, p50 latency) | Account ID, per-request prompts/responses, prompt/response bodies |
 | `GET /self-health` | Handler status, error counts, stale crons | Internal state |
 
 The `/status` endpoint intentionally omits the Cloudflare account ID, individual worker names, and GitHub repo path to reduce reconnaissance value.

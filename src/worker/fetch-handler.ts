@@ -1,5 +1,5 @@
 import { KV, PRIORITY_MAP } from '../constants.js';
-import type { MonitorWorkerEnv, TailOutcome } from '../types.js';
+import type { AiGatewayUsageSnapshot, MonitorWorkerEnv, TailOutcome } from '../types.js';
 import { getSelfHealth, checkCronStaleness } from './self-monitor.js';
 import { collectAccountMetrics } from './crons/collect-metrics.js';
 import { checkBudgets } from './crons/budget-check.js';
@@ -13,6 +13,7 @@ import { computeFingerprint } from './errors/fingerprint.js';
 import { matchTransientPattern } from './errors/patterns.js';
 import { formatBudgetWarning, formatErrorAlert } from './alerts/slack.js';
 import { collectAccountUsage } from './crons/collect-account-usage.js';
+import { collectAiGatewayUsage } from './crons/collect-ai-gateway-usage.js';
 import { getPlanOrCached, getBillingPeriodOrCached } from './account/subscriptions.js';
 import { getAllowancesForPlan } from './account/plan-allowances.js';
 
@@ -32,11 +33,13 @@ function jsonWithCors(data: unknown, status = 200): Response {
  * API endpoints for the cf-monitor worker.
  *
  * Routes:
- * - GET /status   → overall health, worker count, CB states
- * - GET /errors   → recent error fingerprints with GitHub issue links
- * - GET /budgets  → budget utilisation status
- * - GET /workers  → discovered workers
- * - GET /_health  → simple health check for Gatus
+ * - GET /status             → overall health, worker count, CB states
+ * - GET /errors             → recent error fingerprints with GitHub issue links
+ * - GET /budgets            → budget utilisation status
+ * - GET /workers            → discovered workers
+ * - GET /usage              → per-service account usage (GraphQL + AI Gateway totals)
+ * - GET /usage/ai-gateway   → per-gateway/provider/model breakdown (?date=YYYY-MM-DD)
+ * - GET /_health            → simple health check for Gatus
  */
 export async function handleFetch(
 	request: Request,
@@ -84,6 +87,7 @@ export async function handleFetch(
 		if (path === '/workers') return handleWorkers(env);
 		if (path === '/plan') return handlePlan(env);
 		if (path === '/usage') return handleUsage(env);
+		if (path === '/usage/ai-gateway') return handleUsageAiGateway(url, env);
 
 		return Response.json({ error: 'Not found' }, { status: 404 });
 	} catch (err) {
@@ -195,8 +199,9 @@ async function handlePlan(env: MonitorWorkerEnv): Promise<Response> {
 
 async function handleUsage(env: MonitorWorkerEnv): Promise<Response> {
 	const today = new Date().toISOString().slice(0, 10);
-	const [snapshotRaw, plan, billingPeriod] = await Promise.all([
+	const [snapshotRaw, aiGatewayRaw, plan, billingPeriod] = await Promise.all([
 		env.CF_MONITOR_KV.get(`${KV.USAGE_ACCOUNT}${today}`),
+		env.CF_MONITOR_KV.get(`${KV.USAGE_ACCOUNT_AI_GATEWAY}${today}`),
 		getPlanOrCached(env),
 		getBillingPeriodOrCached(env),
 	]);
@@ -204,13 +209,86 @@ async function handleUsage(env: MonitorWorkerEnv): Promise<Response> {
 	const allowances = getAllowancesForPlan(plan);
 	const snapshot = snapshotRaw ? JSON.parse(snapshotRaw) : null;
 
+	// Merge AI Gateway totals into snapshot.services.aiGateway. The GraphQL-derived
+	// snapshot has no AI Gateway data (CF doesn't expose it via GraphQL); we layer
+	// in the AI Gateway logs-derived totals if today's daily blob exists.
+	if (aiGatewayRaw && snapshot && snapshot.services) {
+		try {
+			const aiGateway = JSON.parse(aiGatewayRaw) as AiGatewayUsageSnapshot;
+			snapshot.services.aiGateway = {
+				requests: aiGateway.totals?.requests ?? 0,
+				tokens_in: aiGateway.totals?.tokens_in ?? 0,
+				tokens_out: aiGateway.totals?.tokens_out ?? 0,
+				cost: aiGateway.totals?.cost ?? 0,
+				cached: aiGateway.totals?.cached ?? 0,
+				errors: aiGateway.totals?.errors ?? 0,
+			};
+		} catch {
+			// Corrupted blob — leave services.aiGateway as-is
+		}
+	}
+
 	return jsonWithCors({
 		account: env.ACCOUNT_NAME,
 		plan,
 		billingPeriod: billingPeriod ?? undefined,
 		allowances,
 		usage: snapshot,
-		disclaimer: 'Approximate — from CF GraphQL Analytics API. Not authoritative for billing.',
+		disclaimer: 'Approximate — from CF GraphQL Analytics API. AI Gateway totals come from per-request log aggregates.',
+		timestamp: Date.now(),
+	});
+}
+
+async function handleUsageAiGateway(url: URL, env: MonitorWorkerEnv): Promise<Response> {
+	// Optional ?date=YYYY-MM-DD param, defaults to today. Limited to last 32 days (KV TTL).
+	const dateParam = url.searchParams.get('date');
+	let date: string;
+	if (dateParam) {
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+			return jsonWithCors({ error: 'Invalid date format — use YYYY-MM-DD' }, 400);
+		}
+		const dt = new Date(`${dateParam}T00:00:00Z`);
+		if (Number.isNaN(dt.getTime())) {
+			return jsonWithCors({ error: 'Invalid date' }, 400);
+		}
+		const ageDays = (Date.now() - dt.getTime()) / 86_400_000;
+		if (ageDays < 0 || ageDays > 32) {
+			return jsonWithCors({ error: 'date must be within the last 32 days' }, 400);
+		}
+		date = dateParam;
+	} else {
+		date = new Date().toISOString().slice(0, 10);
+	}
+
+	const raw = await env.CF_MONITOR_KV.get(`${KV.USAGE_ACCOUNT_AI_GATEWAY}${date}`);
+	if (!raw) {
+		return jsonWithCors({
+			account: env.ACCOUNT_NAME,
+			date,
+			status: 'no_data',
+			reason: 'No AI Gateway usage collected for this date. The hourly cron may not have run yet, or the account has no AI Gateway traffic.',
+			timestamp: Date.now(),
+		});
+	}
+
+	let snapshot: AiGatewayUsageSnapshot;
+	try {
+		snapshot = JSON.parse(raw) as AiGatewayUsageSnapshot;
+	} catch {
+		return jsonWithCors({
+			account: env.ACCOUNT_NAME,
+			date,
+			status: 'corrupted',
+			reason: 'KV snapshot could not be parsed.',
+			timestamp: Date.now(),
+		}, 500);
+	}
+
+	return jsonWithCors({
+		account: env.ACCOUNT_NAME,
+		date,
+		status: 'ok',
+		snapshot,
 		timestamp: Date.now(),
 	});
 }
@@ -273,6 +351,7 @@ const CRON_HANDLERS: Record<string, (env: MonitorWorkerEnv) => Promise<void>> = 
 	'cost-spike': detectCostSpikes,
 	'collect-metrics': collectAccountMetrics,
 	'collect-account-usage': collectAccountUsage,
+	'collect-ai-gateway-usage': collectAiGatewayUsage,
 	'synthetic-health': runSyntheticHealthCheck,
 	'worker-discovery': discoverWorkers,
 	'daily-rollup': runDailyRollup,
