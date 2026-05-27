@@ -41,7 +41,7 @@ Step-by-step instructions for specific tasks:
 - [FAQ](./faq/index.md) — installation, permissions, costs, fail-open behaviour, alerts, AI features, updates
 - [Security](./security.md) — admin auth, secrets, threat model, data exposure, SDK security
 - [Troubleshooting](./troubleshooting.md) — 14 common issues with solutions
-- [Changelog](../CHANGELOG.md) — version history (v0.1.0 to v0.3.9)
+- [Changelog](../CHANGELOG.md) — version history (v0.1.0 to v0.3.10)
 
 ## Internal Reports
 
