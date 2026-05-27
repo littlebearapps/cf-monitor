@@ -12,7 +12,7 @@ cf-monitor wraps Cloudflare Workers with a single `monitor()` call, tracks every
 - [Security](https://github.com/littlebearapps/cf-monitor/blob/main/docs/security.md): Admin auth, secrets, threat model, data exposure
 - [Troubleshooting](https://github.com/littlebearapps/cf-monitor/blob/main/docs/troubleshooting.md): 16 common issues with solutions
 - [FAQ](https://github.com/littlebearapps/cf-monitor/blob/main/docs/faq/faq.md): Installation, permissions, costs, fail-open behaviour, alerts, AI feature status, updates (also published at https://littlebearapps.com/help/cf-monitor/faq/ with FAQPage JSON-LD)
-- [Changelog](https://github.com/littlebearapps/cf-monitor/blob/main/CHANGELOG.md): Version history v0.1.0 to v0.3.10
+- [Changelog](https://github.com/littlebearapps/cf-monitor/blob/main/CHANGELOG.md): Version history v0.1.0 to v0.3.11
 - [Contributing](https://github.com/littlebearapps/cf-monitor/blob/main/CONTRIBUTING.md): Development setup and conventions
 
 ## Guides

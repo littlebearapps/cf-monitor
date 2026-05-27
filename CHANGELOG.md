@@ -4,6 +4,8 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-05-27
+
 ## [0.3.10] - 2026-05-27
 
 ## [0.3.9] - 2026-05-25
@@ -251,7 +253,8 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 - CI pipeline: Node 20/22 matrix, publint, attw, lockfile-lint, package validation
 - Release workflow: tag-triggered npm publish
 
-[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.10...HEAD
+[Unreleased]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.11...HEAD
+[0.3.11]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.10...v0.3.11
 [0.3.10]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/littlebearapps/cf-monitor/compare/v0.3.7...v0.3.8
