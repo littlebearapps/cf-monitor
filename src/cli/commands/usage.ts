@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'node:fs';
 
 interface UsageOptions {
 	json?: boolean;
+	detail?: boolean;
 }
 
 export async function usageCommand(options: UsageOptions): Promise<void> {
@@ -64,14 +65,36 @@ export async function usageCommand(options: UsageOptions): Promise<void> {
 		printServiceRow('R2', 'classA', services.r2?.classA, (allowances as Record<string, Record<string, number>>).r2?.classA);
 		printServiceRow('R2', 'classB', services.r2?.classB, (allowances as Record<string, Record<string, number>>).r2?.classB);
 		printServiceRow('AI Gateway', 'requests', services.aiGateway?.requests, undefined);
+		// v0.4.0: AI Gateway aggregates (tokens/cost/cached/errors) — only render rows with non-zero values
+		const ag = services.aiGateway as AiGatewayServiceBlock | undefined;
+		if (ag?.tokens_in !== undefined && ag.tokens_in > 0) printServiceRow('AI Gateway', 'tokens_in', ag.tokens_in, undefined);
+		if (ag?.tokens_out !== undefined && ag.tokens_out > 0) printServiceRow('AI Gateway', 'tokens_out', ag.tokens_out, undefined);
+		if (ag?.cached !== undefined && ag.cached > 0) printServiceRow('AI Gateway', 'cached', ag.cached, undefined);
+		if (ag?.errors !== undefined && ag.errors > 0) printServiceRow('AI Gateway', 'errors', ag.errors, undefined);
 		printServiceRow('DO', 'requests', services.durableObjects?.requests, (allowances as Record<string, Record<string, number>>).durableObjects?.requests);
 		printServiceRow('Vectorize', 'queries', services.vectorize?.queries, (allowances as Record<string, Record<string, number>>).vectorize?.queries);
 		printServiceRow('Queues', 'produced', services.queues?.produced, (allowances as Record<string, Record<string, number>>).queues?.produced);
+
+		// Headline AI Gateway cost line (always shown when data exists — cost is the
+		// most-watched number in this block)
+		if (ag?.cost !== undefined && ag.cost > 0) {
+			console.log('');
+			console.log(`  ${pc.bold('AI Gateway cost today')}: ${pc.cyan(`$${ag.cost.toFixed(4)}`)} ` +
+				pc.dim(`(${formatNumber(ag.requests ?? 0)} requests` +
+					(ag.cached ? `, ${formatNumber(ag.cached)} cached` : '') +
+					(ag.errors ? `, ${pc.red(`${formatNumber(ag.errors)} errors`)}` : '') +
+					`)`));
+		}
 
 		console.log('');
 		console.log(pc.dim(`  ${data.disclaimer}`));
 		console.log(pc.dim(`  Last collected: ${data.usage.collected_at}`));
 		console.log('');
+
+		// --detail: per-gateway/provider/model breakdown from /usage/ai-gateway
+		if (options.detail) {
+			await renderAiGatewayDetail(workerUrl);
+		}
 	} catch (err) {
 		console.error(pc.red(`  Failed to connect to cf-monitor worker at ${workerUrl}`));
 		console.error(pc.dim(`  Error: ${err}`));
@@ -144,4 +167,83 @@ interface UsageResponse {
 	};
 	disclaimer: string;
 	timestamp: number;
+}
+
+interface AiGatewayServiceBlock {
+	requests?: number;
+	tokens_in?: number;
+	tokens_out?: number;
+	cost?: number;
+	cached?: number;
+	errors?: number;
+}
+
+interface AiGatewayDetailResponse {
+	account: string;
+	date: string;
+	status: 'ok' | 'no_data' | 'corrupted';
+	snapshot?: {
+		date: string;
+		gateways: Record<string, {
+			providers: Record<string, {
+				models: Record<string, {
+					requests: number;
+					tokens_in: number;
+					tokens_out: number;
+					cost: number;
+					cached: number;
+					errors: number;
+					p50_duration_ms: number;
+				}>;
+			}>;
+		}>;
+		totals: { requests: number; tokens_in: number; tokens_out: number; cost: number; cached: number; errors: number };
+		lastUpdated: number;
+	};
+	reason?: string;
+}
+
+async function renderAiGatewayDetail(workerUrl: string): Promise<void> {
+	console.log(pc.bold('  AI Gateway detail (today)'));
+	console.log(pc.dim('  ─────────────────────────────────────────────────────────────────────────────'));
+	let body: AiGatewayDetailResponse;
+	try {
+		const resp = await fetch(`${workerUrl}/usage/ai-gateway`);
+		if (!resp.ok) {
+			console.log(pc.yellow(`    Worker returned ${resp.status}`));
+			console.log('');
+			return;
+		}
+		body = await resp.json() as AiGatewayDetailResponse;
+	} catch (err) {
+		console.log(pc.red(`    Fetch failed: ${err instanceof Error ? err.message : String(err)}`));
+		console.log('');
+		return;
+	}
+
+	if (body.status !== 'ok' || !body.snapshot) {
+		console.log(pc.dim(`    No AI Gateway data for ${body.date} (${body.reason ?? body.status})`));
+		console.log('');
+		return;
+	}
+
+	const snap = body.snapshot;
+	for (const [gwId, gw] of Object.entries(snap.gateways)) {
+		console.log(`    ${pc.bold(gwId)}`);
+		for (const [provider, prov] of Object.entries(gw.providers)) {
+			for (const [model, agg] of Object.entries(prov.models)) {
+				const costStr = pc.cyan(`$${agg.cost.toFixed(4)}`);
+				const reqStr = formatNumber(agg.requests);
+				const tokStr = `${formatNumber(agg.tokens_in)}/${formatNumber(agg.tokens_out)}`;
+				const cacheStr = agg.cached ? pc.green(`cached=${formatNumber(agg.cached)}`) : pc.dim('cached=0');
+				const errStr = agg.errors ? pc.red(`errors=${agg.errors}`) : pc.dim('errors=0');
+				const p50Str = pc.dim(`p50=${agg.p50_duration_ms}ms`);
+				console.log(`      ${provider.padEnd(20)} ${model.padEnd(28)} req=${reqStr.padStart(6)}  tok=${tokStr.padEnd(14)}  ${costStr.padStart(10)}  ${cacheStr}  ${errStr}  ${p50Str}`);
+			}
+		}
+	}
+
+	console.log('');
+	console.log(pc.dim(`    Last updated: ${new Date(snap.lastUpdated).toISOString()}`));
+	console.log('');
 }

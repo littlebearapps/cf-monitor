@@ -91,6 +91,7 @@ program
 	.command('usage')
 	.description('Show account-wide CF service usage vs plan allowances')
 	.option('--json', 'Output as JSON')
+	.option('--detail', 'Include per-gateway/provider/model AI Gateway breakdown')
 	.action(usageCommand);
 
 program
