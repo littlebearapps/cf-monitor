@@ -1,6 +1,6 @@
 # CLAUDE.md - cf-monitor
 
-**Last Updated**: 2026-04-15
+**Last Updated**: 2026-05-27
 
 ---
 
@@ -45,7 +45,7 @@
 
 **Quick Commands**:
 ```bash
-npm test                    # Run unit tests (316 tests, vitest)
+npm test                    # Run unit tests (365 tests, vitest)
 npm run test:integration    # Run integration tests (53 tests across 10 files, needs CF credentials)
 npm run typecheck           # TypeScript check (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
@@ -110,10 +110,10 @@ cf-monitor/
 │   ├── getting-started.md, configuration.md, security.md, troubleshooting.md
 │   ├── guides/               # 11 task-oriented guides
 │   ├── how-to/               # 3 step-by-step how-tos
-│   └── faq/index.md          # Marketing-site FAQPage source — DO NOT delete or rename
+│   └── faq/faq.md            # Marketing-site FAQPage source — DO NOT delete or rename
 │                             # See .claude/rules/docs-faq.md for editorial rules
 │
-└── tests/                    # 290 unit tests + 53 integration tests
+└── tests/                    # 365 unit tests + 53 integration tests
     ├── helpers/               # Mock KV, AE, env, request factories
     ├── sdk/                   # monitor, proxy, metrics, detection, circuit-breaker
     ├── worker/                # tail, fetch, scheduled, config, ae-client, crons, errors

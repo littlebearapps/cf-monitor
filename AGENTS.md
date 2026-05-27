@@ -5,7 +5,7 @@
 ## Quick Commands
 
 ```bash
-npm test                    # 316 unit tests (vitest)
+npm test                    # 365 unit tests (vitest)
 npm run test:integration    # 53 integration tests (deploys to CF, needs credentials)
 npm run typecheck           # TypeScript strict (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
@@ -37,17 +37,17 @@ cf-monitor/
       errors/             # Fingerprinting, patterns, GitHub issue CRUD
       alerts/             # Slack alerts with dedup
       account/            # Plan detection, billing period, allowances
-      optional/           # STUB handlers for AI features (pattern-discovery, health-reporter, coverage-auditor) — not yet implemented in v0.3.8
+      optional/           # STUB handlers for AI features (pattern-discovery, health-reporter, coverage-auditor) — not yet implemented as of v0.3.11
     cli/                  # CLI: npx cf-monitor <command>
       commands/           # 9 commands: init, deploy, wire, status, coverage, secret, config-sync, upgrade, migrate, usage
-  tests/                  # 338 unit tests + 53 integration tests (10 files)
+  tests/                  # 365 unit tests + 53 integration tests (10 files)
   worker/                 # Pre-built entry for wrangler deploy
   docs/
     README.md             # Documentation index
     getting-started.md, configuration.md, security.md, troubleshooting.md
     guides/               # 11 task-oriented guides
     how-to/               # 3 step-by-step how-tos
-    faq/index.md          # Marketing-site FAQPage source — DO NOT delete or rename
+    faq/faq.md            # Marketing-site FAQPage source — DO NOT delete or rename
 ```
 
 ## Documentation Policy
@@ -64,13 +64,12 @@ cf-monitor/
 - **No D1**: Analytics Engine for metrics, KV for state. Zero database migrations.
 - **Australian English**: realise, colour, licence
 
-## Stubs & Partial Features (v0.3.8)
+## Stubs & Partial Features (v0.3.11)
 
 Do not assume these work end-to-end:
 
 - `src/worker/optional/pattern-discovery.ts`, `health-reporter.ts`, `coverage-auditor.ts` — stubs. Enabling `ai.*` flags in `cf-monitor.yaml` is a no-op. Tracked: #8, #9, #10.
-- `monitoring.spike_threshold` — schema validates but `cost-spike.ts` hardcodes `2.0`. Values in YAML are ignored.
-- `monitoring.spike_threshold` YAML key — schema validates but `src/worker/crons/cost-spike.ts:7` hardcodes `2.0`.
+- `monitoring.spike_threshold` YAML key — schema validates but `src/worker/crons/cost-spike.ts:7` hardcodes `2.0`. Values in YAML are ignored.
 
 If you're asked to use any of these, implement the missing wiring first or flag the stub to the user.
 

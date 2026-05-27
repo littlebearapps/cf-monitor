@@ -35,7 +35,7 @@ cf-monitor wraps Cloudflare Workers with a single `monitor()` call, tracks every
 - [Gatus Heartbeat](https://github.com/littlebearapps/cf-monitor/blob/main/docs/how-to/gatus-heartbeat.md): External uptime monitor for cf-monitor crons
 - [Custom Feature IDs](https://github.com/littlebearapps/cf-monitor/blob/main/docs/how-to/custom-feature-ids.md): featureId, featurePrefix, features map
 
-## Stubs & Partial Features (v0.3.9)
+## Stubs & Partial Features (v0.3.11)
 
 - AI features (pattern discovery, health reports, coverage auditor) — `src/worker/optional/*.ts` are stubs. Enabling `ai.*` flags is a no-op. Issues #8, #9, #10.
 - `monitoring.spike_threshold` YAML key — schema validates but hardcoded to 2.0 in source.
