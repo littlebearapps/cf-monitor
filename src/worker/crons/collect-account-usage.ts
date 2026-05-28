@@ -1,5 +1,6 @@
 import { KV } from '../../constants.js';
 import type { MonitorWorkerEnv, ServiceUsageSnapshot } from '../../types.js';
+import { classifyR2Action } from './r2-classification.js';
 
 const GRAPHQL_URL = 'https://api.cloudflare.com/client/v4/graphql';
 const USAGE_DISCLAIMER = 'Approximate — from CF GraphQL Analytics API. Not authoritative for billing.';
@@ -150,20 +151,26 @@ async function queryCoreServices(
 		}
 	} catch { /* skip */ }
 
-	// R2
+	// R2 — actionType returns S3-style names (GetObject, PutObject, …). Free ops are excluded;
+	// unrecognised ops are surfaced via a warning rather than silently billed as Class A.
 	try {
 		const r2 = r2Result?.data?.viewer?.accounts?.[0]?.r2OperationsAdaptiveGroups;
 		if (r2?.length) {
 			let classA = 0;
 			let classB = 0;
+			const unknownActions = new Map<string, number>();
 			for (const entry of r2) {
 				const action = entry.dimensions?.actionType ?? '';
 				const count = entry.sum?.requests ?? 0;
-				if (['GetObject', 'HeadObject', 'ListBucket'].includes(action)) {
-					classB += count;
-				} else {
-					classA += count;
+				switch (classifyR2Action(action)) {
+					case 'classA': classA += count; break;
+					case 'classB': classB += count; break;
+					case 'free': break; // non-billable
+					case 'unknown': unknownActions.set(action, (unknownActions.get(action) ?? 0) + count); break;
 				}
+			}
+			if (unknownActions.size) {
+				console.warn(`[cf-monitor:usage] Unknown R2 actionType(s): ${[...unknownActions.keys()].join(', ')}`);
 			}
 			services.r2 = { classA, classB };
 		}

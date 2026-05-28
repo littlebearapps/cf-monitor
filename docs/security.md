@@ -8,6 +8,60 @@ cf-monitor is a **cost protection and observability tool**, not a security produ
 
 **Threat model**: cf-monitor defends against accidental cost overruns (infinite loops, misconfigured crons, deployment bugs). The January 2026 incident that inspired cf-monitor was caused by a worker bug writing 4.8 billion D1 rows — not by a malicious actor.
 
+## Read endpoint authentication (Phase 9)
+
+cf-monitor's read endpoints expose account-sensitive data — worker names, queue backlogs, budget config, error fingerprints, and explicit weaknesses via `/protection`. Phase 9 (2026-05-28) added a three-mode auth model that reuses the same `ADMIN_TOKEN` Bearer-token check the admin POST endpoints use.
+
+### Auth modes
+
+| Mode | Endpoints | Behaviour |
+|---|---|---|
+| `safe_public` | `/_health` | Always reachable, no auth. When `CF_MONITOR_REQUIRE_AUTH_FOR_READS=true` is set, the response strips the `account` field — Gatus probes still work without leaking the account name. |
+| `always_auth_required` | `/protection` | Returns `401 Unauthorized` without a valid Bearer token, regardless of any flag. This is the **default-safe** posture for the audit endpoint — it explicitly lists account weaknesses and must never be public by accident. |
+| `owner_only` | `/usage`, `/usage/ai-gateway`, `/workers`, `/budgets`, `/plan`, `/errors`, `/self-health`, `/status` | Public by default (Phase 4 backward-compat invariant). Lock down by setting `CF_MONITOR_REQUIRE_AUTH_FOR_READS=true` — every endpoint in this group then requires `Authorization: Bearer $ADMIN_TOKEN`. |
+
+### Public-redacted `/protection` (opt-in)
+
+For operators who want a public-but-safe protection report (e.g. for a status page), set `CF_MONITOR_PROTECTION_PUBLIC=redacted`. Unauthenticated callers then receive a redacted body: worker / queue / Pages / Vectorize names and resource ids are replaced with `<REDACTED>`, but the heuristic score, severity counts, status breakdown, and recommended-action text remain visible. **The default behaviour is 401** — this flag is opt-in only.
+
+Authenticated callers always get the full report regardless of the flag.
+
+### Recommended production setup
+
+1. Front the cf-monitor worker with **Cloudflare Access** (zero-trust auth via your IdP). This is the strongest model because it gates the entire worker before any code runs.
+2. **OR** set `CF_MONITOR_REQUIRE_AUTH_FOR_READS=true` to use cf-monitor's built-in Bearer auth on the read endpoints. Combine with `ADMIN_TOKEN` rotation.
+
+Either way, `/_health` stays publicly reachable for uptime monitors like Gatus. `visibility ≠ enforcement` remains the broader principle: even with reads locked down, runtime SDK proxies in your consumer workers are the layer that actually stops cost blowouts.
+
+### Response details (read endpoint 401)
+
+A blocked read returns:
+
+```http
+HTTP/1.1 401 Unauthorized
+content-type: application/json
+WWW-Authenticate: Bearer realm="cf-monitor", charset="UTF-8"
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Authorization
+
+{"error": "Unauthorized"}
+```
+
+The response leaks no information about which endpoint was hit, whether the path exists, or whether the token was malformed vs missing.
+
+### CLI auth
+
+`cf-monitor protection` and `cf-monitor usage` both send `Authorization: Bearer $CF_MONITOR_ADMIN_TOKEN` when that env var is set, or `--admin-token <token>` is passed. With no token set, they don't send a header (which keeps them working against an un-locked-down worker — backward compat).
+
+```bash
+# Lock down + use the CLI:
+wrangler secret put ADMIN_TOKEN              # set on the worker (existing pattern)
+wrangler secret put CF_MONITOR_REQUIRE_AUTH_FOR_READS   # set to "true" on the worker
+export CF_MONITOR_ADMIN_TOKEN=<same-value>    # in your shell, for the CLI
+npx cf-monitor protection                     # now authenticated
+```
+
 ## Admin endpoint authentication
 
 The cf-monitor worker exposes `/admin/*` POST endpoints for operational tasks: manually triggering crons, tripping/resetting circuit breakers, and running dry-run tests. These endpoints are protected by a shared secret (`ADMIN_TOKEN`).

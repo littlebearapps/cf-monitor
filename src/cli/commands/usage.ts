@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 interface UsageOptions {
 	json?: boolean;
 	detail?: boolean;
+	adminToken?: string;
 }
 
 export async function usageCommand(options: UsageOptions): Promise<void> {
@@ -15,8 +16,17 @@ export async function usageCommand(options: UsageOptions): Promise<void> {
 		return;
 	}
 
+	const token = options.adminToken ?? process.env.CF_MONITOR_ADMIN_TOKEN;
+	const headers: Record<string, string> = {};
+	if (token) headers['Authorization'] = `Bearer ${token}`;
+
 	try {
-		const response = await fetch(`${workerUrl}/usage`);
+		const response = await fetch(`${workerUrl}/usage`, { headers });
+		if (response.status === 401) {
+			console.error(pc.red('  Worker returned 401 Unauthorized.'));
+			console.error(`  This worker has CF_MONITOR_REQUIRE_AUTH_FOR_READS=true. Export ${pc.cyan('CF_MONITOR_ADMIN_TOKEN')} or pass ${pc.cyan('--admin-token <token>')}.`);
+			return;
+		}
 		if (!response.ok) {
 			console.error(pc.red(`  Worker returned ${response.status}: ${response.statusText}`));
 			return;
@@ -93,7 +103,7 @@ export async function usageCommand(options: UsageOptions): Promise<void> {
 
 		// --detail: per-gateway/provider/model breakdown from /usage/ai-gateway
 		if (options.detail) {
-			await renderAiGatewayDetail(workerUrl);
+			await renderAiGatewayDetail(workerUrl, headers);
 		}
 	} catch (err) {
 		console.error(pc.red(`  Failed to connect to cf-monitor worker at ${workerUrl}`));
@@ -203,12 +213,12 @@ interface AiGatewayDetailResponse {
 	reason?: string;
 }
 
-async function renderAiGatewayDetail(workerUrl: string): Promise<void> {
+async function renderAiGatewayDetail(workerUrl: string, headers: Record<string, string>): Promise<void> {
 	console.log(pc.bold('  AI Gateway detail (today)'));
 	console.log(pc.dim('  ─────────────────────────────────────────────────────────────────────────────'));
 	let body: AiGatewayDetailResponse;
 	try {
-		const resp = await fetch(`${workerUrl}/usage/ai-gateway`);
+		const resp = await fetch(`${workerUrl}/usage/ai-gateway`, { headers });
 		if (!resp.ok) {
 			console.log(pc.yellow(`    Worker returned ${resp.status}`));
 			console.log('');

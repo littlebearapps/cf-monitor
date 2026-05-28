@@ -9,6 +9,9 @@ import { detectCostSpikes } from './crons/cost-spike.js';
 import { discoverWorkers } from './crons/worker-discovery.js';
 import { runDailyRollup } from './crons/daily-rollup.js';
 import { runSyntheticHealthCheck } from './crons/synthetic-health.js';
+import { collectQueueRealtime } from './crons/collect-queue-realtime.js';
+import { discoverPagesProjects } from './crons/discover-pages-projects.js';
+import { discoverVectorizeIndexes } from './crons/discover-vectorize-indexes.js';
 
 /** Execute a cron handler with self-monitoring recording. */
 async function runAndRecord(
@@ -64,6 +67,7 @@ export async function handleScheduled(
 				runAndRecord(env, 'collect-metrics', () => collectAccountMetrics(env)),
 				runAndRecord(env, 'collect-account-usage', () => collectAccountUsage(env)),
 				runAndRecord(env, 'collect-ai-gateway-usage', () => collectAiGatewayUsage(env)),
+				runAndRecord(env, 'collect-queue-realtime', () => collectQueueRealtime(env)),
 				runAndRecord(env, 'budget-check', () => checkBudgets(env)),
 				runAndRecord(env, 'synthetic-health', () => runSyntheticHealthCheck(env)),
 			]);
@@ -74,6 +78,8 @@ export async function handleScheduled(
 			const results = await Promise.allSettled([
 				runAndRecord(env, 'daily-rollup', () => runDailyRollup(env)),
 				runAndRecord(env, 'worker-discovery', () => discoverWorkers(env)),
+				runAndRecord(env, 'discover-pages-projects', () => discoverPagesProjects(env)),
+				runAndRecord(env, 'discover-vectorize-indexes', () => discoverVectorizeIndexes(env)),
 			]);
 			success = results.every((r) => r.status === 'fulfilled');
 		}

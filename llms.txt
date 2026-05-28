@@ -39,3 +39,10 @@ cf-monitor wraps Cloudflare Workers with a single `monitor()` call, tracks every
 
 - AI features (pattern discovery, health reports, coverage auditor) — `src/worker/optional/*.ts` are stubs. Enabling `ai.*` flags is a no-op. Issues #8, #9, #10.
 - `monitoring.spike_threshold` YAML key — schema validates but hardcoded to 2.0 in source.
+
+## In-progress (uncommitted, on feature/ai-gateway-usage-collection)
+
+- [Protection Coverage](https://github.com/littlebearapps/cf-monitor/blob/main/docs/protection-coverage.md): `GET /protection` + `npx cf-monitor protection` — heuristic 0–100 audit score with 10 finding categories. Audit-only; Tier-3 destructive controls deferred.
+- [Billing endpoints follow-up](https://github.com/littlebearapps/cf-monitor/blob/main/docs/research/billing-endpoints-follow-up.md): 2026-05-28 Billing Read probe. `/billing/usage` is NOT the Billable Usage API; `/billing/history` is billing-authoritative past invoices (not yet wired). Confidence-label vocabulary canonical source.
+- [Budget Alert registration TODO → IMPLEMENTED](https://github.com/littlebearapps/cf-monitor/blob/main/docs/research/budget-alert-registration-todo.md): `cf-monitor init --register-budget-alert <threshold>` opt-in CF Notifications subscription. The $-threshold itself is set in the CF dashboard (API limitation).
+- Read endpoint auth (Phase 9): `/protection` is auth-required by default; other read endpoints opt-in via `CF_MONITOR_REQUIRE_AUTH_FOR_READS=true`. `/_health` always public. Optional `CF_MONITOR_PROTECTION_PUBLIC=redacted` for a redacted public variant. See `docs/security.md` → "Read endpoint authentication".

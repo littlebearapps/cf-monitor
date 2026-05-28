@@ -145,4 +145,30 @@ describe('collectAccountUsage', () => {
 		const snapshot = JSON.parse(putCall[1]);
 		expect(snapshot.services.workers).toEqual({ requests: 1000, cpuMs: 1700 });
 	});
+
+	it('classifies R2 S3 actionType names and excludes free/unknown ops', async () => {
+		const env = mockEnv();
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		vi.spyOn(globalThis, 'fetch')
+			.mockResolvedValueOnce(graphqlResponse({})) // Workers
+			.mockResolvedValueOnce(graphqlResponse({})) // D1
+			.mockResolvedValueOnce(graphqlResponse({})) // KV
+			.mockResolvedValueOnce(graphqlResponse({
+				r2OperationsAdaptiveGroups: [
+					{ dimensions: { actionType: 'GetObject' }, sum: { requests: 100 } },  // classB
+					{ dimensions: { actionType: 'HeadObject' }, sum: { requests: 50 } },  // classB
+					{ dimensions: { actionType: 'PutObject' }, sum: { requests: 20 } },   // classA
+					{ dimensions: { actionType: 'DeleteObject' }, sum: { requests: 5 } }, // free — excluded
+					{ dimensions: { actionType: 'MysteryOp' }, sum: { requests: 7 } },    // unknown — excluded + warn
+				],
+			}))
+			.mockResolvedValueOnce(graphqlResponse({})); // Durable Objects
+
+		await collectAccountUsage(env);
+
+		const putCall = (env.CF_MONITOR_KV.put as ReturnType<typeof vi.fn>).mock.calls[0];
+		const snapshot = JSON.parse(putCall[1]);
+		expect(snapshot.services.r2).toEqual({ classA: 20, classB: 150 });
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('MysteryOp'));
+	});
 });

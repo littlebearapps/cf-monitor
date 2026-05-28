@@ -112,7 +112,7 @@ describe('handleFetch', () => {
 		expect(resp.status).toBe(204);
 		expect(resp.headers.get('Access-Control-Allow-Origin')).toBe('*');
 		expect(resp.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS');
-		expect(resp.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type');
+		expect(resp.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type, Authorization');
 	});
 
 	it('POST to non-webhook path returns 404', async () => {
@@ -254,6 +254,233 @@ describe('handleFetch', () => {
 			errors: 1,
 		});
 		expect(body.usage.services.workers).toEqual({ requests: 100, cpuMs: 5000 });
+	});
+
+	it('GET /usage backward-compat invariant when no Tier-2 KV blobs are present', async () => {
+		// With NO queues_realtime / pages / vectorize_indexes blobs seeded, the response must still
+		// carry every Phase-1 field (byte-identical) and the new optional fields are null.
+		const env = createMockMonitorWorkerEnv();
+		const resp = await handleFetch(createRequest('/usage'), env, createMockCtx());
+		const body = await resp.json() as Record<string, unknown>;
+		expect(resp.status).toBe(200);
+		expect(body).toHaveProperty('account');
+		expect(body).toHaveProperty('plan');
+		expect(body).toHaveProperty('allowances');
+		expect(body).toHaveProperty('disclaimer');
+		expect(body).toHaveProperty('timestamp');
+		expect(typeof body.timestamp).toBe('number');
+		// Tier-2 additions: present as keys but null when no blobs.
+		expect(body.queues_realtime).toBeNull();
+		expect(body.pages).toBeNull();
+		expect(body.vectorize_indexes).toBeNull();
+	});
+
+	it('GET /usage carries the documented confidence labels for every visible section', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const resp = await handleFetch(createRequest('/usage'), env, createMockCtx());
+		const body = await resp.json() as { confidence: Record<string, string> };
+		expect(body.confidence).toEqual({
+			workers: 'analytics_estimate',
+			d1: 'analytics_estimate',
+			kv: 'analytics_estimate',
+			r2: 'analytics_estimate',
+			durableObjects: 'analytics_estimate',
+			aiGateway: 'billing_authoritative',
+			plan: 'billing_authoritative',
+			queues_realtime: 'runtime_metered',
+			pages: 'runtime_metered',
+			vectorize_indexes: 'runtime_metered',
+			billable_usage_dashboard: 'dashboard_documented_no_public_api',
+			budget_alert: 'alert_only',
+		});
+	});
+
+	it('GET /usage hydrates the opt-in budget_alert subscription when registered', async () => {
+		const env = createMockMonitorWorkerEnv();
+		await env.CF_MONITOR_KV.put(KV.CONFIG_BUDGET_ALERT, JSON.stringify({
+			policy_id: 'pol-abc-123',
+			threshold: 100,
+			alert_type: 'billing_budget_alert',
+			label: 'alert_only',
+			recipient: 'email',
+			registered_at: '2026-05-28T00:00:00Z',
+			dashboard_threshold_url: 'https://dash.cloudflare.com/?to=/:account/billing/billable-usage',
+		}));
+		const resp = await handleFetch(createRequest('/usage'), env, createMockCtx());
+		const body = await resp.json() as { budget_alert: { policy_id: string; label: string; threshold: number } };
+		expect(body.budget_alert.policy_id).toBe('pol-abc-123');
+		expect(body.budget_alert.label).toBe('alert_only');
+		expect(body.budget_alert.threshold).toBe(100);
+	});
+
+	it('GET /usage returns null budget_alert when the subscription has not been opt-in created', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const resp = await handleFetch(createRequest('/usage'), env, createMockCtx());
+		const body = await resp.json() as Record<string, unknown>;
+		expect(body.budget_alert).toBeNull();
+	});
+
+	it('GET /usage hydrates the three Tier-2 snapshots when KV blobs are populated', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const today = new Date().toISOString().slice(0, 10);
+		await env.CF_MONITOR_KV.put(`${KV.USAGE_QUEUE_REALTIME}${today}`, JSON.stringify({
+			collected_at: '2026-05-28T00:00:00Z',
+			source: 'cloudflare_rest',
+			confidence: 'runtime_metered',
+			queues: [{ id: 'q1', name: 'tasks', backlog_count: 7 }],
+			partial: false,
+		}));
+		await env.CF_MONITOR_KV.put(`${KV.USAGE_PAGES_DISCOVERY}${today}`, JSON.stringify({
+			collected_at: '2026-05-28T00:00:00Z',
+			source: 'cloudflare_rest',
+			confidence: 'runtime_metered',
+			projects: [{ name: 'marketing', functions_usage: 'unknown' }],
+			partial: false,
+		}));
+		await env.CF_MONITOR_KV.put(`${KV.USAGE_VECTORIZE_DISCOVERY}${today}`, JSON.stringify({
+			collected_at: '2026-05-28T00:00:00Z',
+			source: 'cloudflare_rest',
+			confidence: 'runtime_metered',
+			indexes: [{ name: 'embeddings', dimensions: 1536, metric: 'cosine' }],
+			partial: false,
+			caveat: 'Per-index vector counts not collected — would require paginating list_vectors per index, which risks CF API rate-limit cost. Metadata only this pass.',
+		}));
+
+		const resp = await handleFetch(createRequest('/usage'), env, createMockCtx());
+		const body = await resp.json() as {
+			queues_realtime: { queues: Array<{ id: string }> };
+			pages: { projects: Array<{ name: string; functions_usage: string }> };
+			vectorize_indexes: { indexes: Array<{ name: string }>; partial: boolean };
+		};
+		expect(body.queues_realtime.queues[0].id).toBe('q1');
+		expect(body.pages.projects[0]).toMatchObject({ name: 'marketing', functions_usage: 'unknown' });
+		expect(body.vectorize_indexes.indexes[0].name).toBe('embeddings');
+		expect(body.vectorize_indexes.partial).toBe(false);
+	});
+
+	it('GET /protection returns a coverage report with CORS + the expected shape (auth-required)', async () => {
+		// /protection is auth-required by default (Phase 9). Use the admin token.
+		const env = createMockMonitorWorkerEnv({ ADMIN_TOKEN: 'test-admin-token' });
+		const resp = await handleFetch(
+			new Request('http://localhost/protection', { headers: { Authorization: 'Bearer test-admin-token' } }),
+			env,
+			createMockCtx(),
+		);
+		expect(resp.status).toBe(200);
+		expect(resp.headers.get('access-control-allow-origin')).toBe('*');
+		const body = await resp.json() as {
+			summary: { score: number };
+			findings: Array<{ id: string; severity: string; status: string }>;
+			confidence: { overall: string; billing: string };
+			caveats: string[];
+		};
+		expect(body.summary.score).toBeGreaterThanOrEqual(0);
+		expect(body.summary.score).toBeLessThanOrEqual(100);
+		expect(body.findings.length).toBeGreaterThan(0);
+		expect(body.caveats.length).toBeGreaterThan(0);
+		expect(body.confidence.billing).toBe('dashboard_documented_no_public_api');
+	});
+
+	// =========================================================================
+	// Phase 9 — Security + Read Endpoint Hardening
+	// =========================================================================
+
+	it('GET /protection returns 401 + WWW-Authenticate when no token is sent', async () => {
+		const env = createMockMonitorWorkerEnv({ ADMIN_TOKEN: 'test-admin-token' });
+		const resp = await handleFetch(createRequest('/protection'), env, createMockCtx());
+		expect(resp.status).toBe(401);
+		expect(resp.headers.get('WWW-Authenticate')).toMatch(/^Bearer/);
+		expect(resp.headers.get('access-control-allow-origin')).toBe('*');
+		const body = await resp.json() as Record<string, unknown>;
+		expect(body).toEqual({ error: 'Unauthorized' });
+	});
+
+	it('GET /protection returns 401 when an invalid token is sent', async () => {
+		const env = createMockMonitorWorkerEnv({ ADMIN_TOKEN: 'real-token' });
+		const resp = await handleFetch(
+			new Request('http://localhost/protection', { headers: { Authorization: 'Bearer wrong-token' } }),
+			env,
+			createMockCtx(),
+		);
+		expect(resp.status).toBe(401);
+	});
+
+	it('GET /protection returns a redacted body when CF_MONITOR_PROTECTION_PUBLIC=redacted and no auth', async () => {
+		const env = createMockMonitorWorkerEnv({
+			ADMIN_TOKEN: 'test-admin-token',
+			CF_MONITOR_PROTECTION_PUBLIC: 'redacted',
+		});
+		const resp = await handleFetch(createRequest('/protection'), env, createMockCtx());
+		expect(resp.status).toBe(200);
+		const body = await resp.json() as { account: string; summary: { score: number }; findings: Array<{ resource_name?: string }> };
+		expect(body.account).toBe('<REDACTED>');
+		expect(body.summary.score).toBeGreaterThanOrEqual(0);
+		// No finding should leak a resource_name (Phase 9 redaction).
+		expect(body.findings.every((f) => f.resource_name === undefined || f.resource_name === '<REDACTED>')).toBe(true);
+	});
+
+	it('GET /usage stays public by default (Phase 4 backward-compat invariant)', async () => {
+		const env = createMockMonitorWorkerEnv();
+		const resp = await handleFetch(createRequest('/usage'), env, createMockCtx());
+		expect(resp.status).toBe(200);
+	});
+
+	it('GET /usage returns 401 when CF_MONITOR_REQUIRE_AUTH_FOR_READS=true and no token', async () => {
+		const env = createMockMonitorWorkerEnv({
+			ADMIN_TOKEN: 'test-admin-token',
+			CF_MONITOR_REQUIRE_AUTH_FOR_READS: 'true',
+		});
+		const resp = await handleFetch(createRequest('/usage'), env, createMockCtx());
+		expect(resp.status).toBe(401);
+		expect(resp.headers.get('WWW-Authenticate')).toMatch(/^Bearer/);
+	});
+
+	it('GET /usage returns 200 when CF_MONITOR_REQUIRE_AUTH_FOR_READS=true and valid token is sent', async () => {
+		const env = createMockMonitorWorkerEnv({
+			ADMIN_TOKEN: 'test-admin-token',
+			CF_MONITOR_REQUIRE_AUTH_FOR_READS: 'true',
+		});
+		const resp = await handleFetch(
+			new Request('http://localhost/usage', { headers: { Authorization: 'Bearer test-admin-token' } }),
+			env,
+			createMockCtx(),
+		);
+		expect(resp.status).toBe(200);
+	});
+
+	it('GET /_health stays public even when CF_MONITOR_REQUIRE_AUTH_FOR_READS=true, but drops the account name', async () => {
+		const env = createMockMonitorWorkerEnv({
+			ADMIN_TOKEN: 'test-admin-token',
+			CF_MONITOR_REQUIRE_AUTH_FOR_READS: 'true',
+		});
+		const resp = await handleFetch(createRequest('/_health'), env, createMockCtx());
+		expect(resp.status).toBe(200);
+		const body = await resp.json() as Record<string, unknown>;
+		expect(body.healthy).toBe(true);
+		expect(body.account).toBeUndefined(); // No leakage of account name to anonymous probes
+	});
+
+	it('all owner_only endpoints return 401 when the flag is set and no token is sent', async () => {
+		const env = createMockMonitorWorkerEnv({
+			ADMIN_TOKEN: 'test-admin-token',
+			CF_MONITOR_REQUIRE_AUTH_FOR_READS: 'true',
+		});
+		const paths = ['/status', '/errors', '/budgets', '/workers', '/plan', '/usage', '/self-health'];
+		for (const p of paths) {
+			const resp = await handleFetch(createRequest(p), env, createMockCtx());
+			expect(resp.status, `${p} should require auth when flag is set`).toBe(401);
+		}
+	});
+
+	it('OPTIONS preflight stays public and CORS-permissive even with auth flag set', async () => {
+		const env = createMockMonitorWorkerEnv({
+			ADMIN_TOKEN: 'test-admin-token',
+			CF_MONITOR_REQUIRE_AUTH_FOR_READS: 'true',
+		});
+		const req = new Request('http://localhost/usage', { method: 'OPTIONS' });
+		const resp = await handleFetch(req, env, createMockCtx());
+		expect(resp.status).toBe(204);
+		expect(resp.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type, Authorization');
 	});
 });
 

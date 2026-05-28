@@ -5,7 +5,7 @@
 ## Quick Commands
 
 ```bash
-npm test                    # 365 unit tests (vitest)
+npm test                    # 461 unit tests (vitest)
 npm run test:integration    # 53 integration tests (deploys to CF, needs credentials)
 npm run typecheck           # TypeScript strict (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
@@ -33,14 +33,18 @@ cf-monitor/
       scheduled-handler.ts # Cron multiplexer
       fetch-handler.ts    # API endpoints
       self-monitor.ts     # Self-monitoring: cron tracking, error counts
-      crons/              # 8 cron handlers: budget-check, collect-metrics, collect-account-usage, cost-spike, daily-rollup, gap-detection, synthetic-health, worker-discovery
+      crons/              # 12 cron handlers + 1 helper: budget-check, collect-metrics, collect-account-usage, collect-ai-gateway-usage, collect-queue-realtime, cost-spike, daily-rollup, discover-pages-projects, discover-vectorize-indexes, gap-detection, synthetic-health, worker-discovery (+ r2-classification.ts is a pure helper, not a cron)
+      protection-coverage.ts  # Audit-only report engine (in-progress, uncommitted)
       errors/             # Fingerprinting, patterns, GitHub issue CRUD
       alerts/             # Slack alerts with dedup
       account/            # Plan detection, billing period, allowances
       optional/           # STUB handlers for AI features (pattern-discovery, health-reporter, coverage-auditor) — not yet implemented as of v0.3.11
     cli/                  # CLI: npx cf-monitor <command>
-      commands/           # 9 commands: init, deploy, wire, status, coverage, secret, config-sync, upgrade, migrate, usage
-  tests/                  # 365 unit tests + 53 integration tests (10 files)
+      commands/           # 13 commands: init, deploy, wire, status, coverage, secret, config-sync, upgrade, migrate, usage, probe-billing, probe-alerting, protection
+      budget-alert.ts     # CF Budget Alert opt-in POST (in-progress, uncommitted)
+      probe-billing.ts    # Read-only billing-endpoints probe (in-progress, uncommitted)
+      probe-alerting.ts   # Read-only alerting-endpoints probe (in-progress, uncommitted)
+  tests/                  # 461 unit tests + 53 integration tests (10 files)
   worker/                 # Pre-built entry for wrangler deploy
   docs/
     README.md             # Documentation index
@@ -72,6 +76,18 @@ Do not assume these work end-to-end:
 - `monitoring.spike_threshold` YAML key — schema validates but `src/worker/crons/cost-spike.ts:7` hardcodes `2.0`. Values in YAML are ignored.
 
 If you're asked to use any of these, implement the missing wiring first or flag the stub to the user.
+
+## In-progress (uncommitted, on `feature/ai-gateway-usage-collection`)
+
+Post-v0.3.11 work landed on disk but not committed. Tests pass (452 unit tests). The next release script run folds these into a real version section. Brief headline:
+
+- Cloudflare API research pass (live probes 2026-05-27 / 05-28) folded into `docs/research/cloudflare-api-{surface.md,surface.json,probe-results.md,research-summary.md}`.
+- R2 `ListBucket` → `unknown` (warned, not counted); free ops (`DeleteObject` etc.) excluded.
+- Queue / Pages / Vectorize REST discovery collectors + confidence labels in `/usage`.
+- `cf-monitor probe billing` + `probe alerting` read-only diagnostics.
+- `cf-monitor init --register-budget-alert <threshold>` opt-in (CF Notifications API; threshold itself is dashboard-set).
+- `GET /protection` + `cf-monitor protection` audit-only Protection Coverage report.
+- Read endpoint auth (Phase 9): `/protection` is auth-required by default (Bearer `$ADMIN_TOKEN`); other read endpoints opt-in via `CF_MONITOR_REQUIRE_AUTH_FOR_READS=true`. `/_health` always public. Optional `CF_MONITOR_PROTECTION_PUBLIC=redacted` for a redacted public `/protection` variant. See `docs/security.md`.
 
 ## Architecture
 

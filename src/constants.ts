@@ -86,6 +86,14 @@ export const KV = {
 	// AI Gateway daily usage snapshots (v0.4.0)
 	USAGE_ACCOUNT_AI_GATEWAY: 'usage:account:ai-gateway:',
 
+	// Tier 2 discovery snapshots (hourly queue realtime + daily Pages/Vectorize lists)
+	USAGE_QUEUE_REALTIME: 'usage:queue:realtime:',
+	USAGE_PAGES_DISCOVERY: 'usage:pages:discovery:',
+	USAGE_VECTORIZE_DISCOVERY: 'usage:vectorize:discovery:',
+
+	// CF Budget Alert opt-in subscription status (Tier 2 Part F)
+	CONFIG_BUDGET_ALERT: 'config:budget_alert',
+
 	// AI patterns (optional)
 	PATTERNS_APPROVED: 'patterns:approved',
 
@@ -136,8 +144,11 @@ export const CRON_HANDLER_REGISTRY: Record<string, { schedule: string; maxStaleM
 	'collect-ai-gateway-usage': { schedule: 'hourly', maxStaleMinutes: 150 },
 	'budget-check': { schedule: 'hourly', maxStaleMinutes: 150 },
 	'synthetic-health': { schedule: 'hourly', maxStaleMinutes: 150 },
+	'collect-queue-realtime': { schedule: 'hourly', maxStaleMinutes: 150 },
 	'daily-rollup': { schedule: 'daily', maxStaleMinutes: 1500 },
 	'worker-discovery': { schedule: 'daily', maxStaleMinutes: 1500 },
+	'discover-pages-projects': { schedule: 'daily', maxStaleMinutes: 1500 },
+	'discover-vectorize-indexes': { schedule: 'daily', maxStaleMinutes: 1500 },
 };
 
 // =============================================================================

@@ -24,6 +24,9 @@ import { configSyncCommand } from './commands/config-sync.js';
 import { upgradeCommand } from './commands/upgrade.js';
 import { migrateCommand } from './commands/migrate.js';
 import { usageCommand } from './commands/usage.js';
+import { probeBillingCommand } from './commands/probe-billing.js';
+import { probeAlertingCommand } from './commands/probe-alerting.js';
+import { protectionCommand } from './commands/protection.js';
 
 const program = new Command();
 
@@ -40,6 +43,9 @@ program
 	.option('--github-repo <repo>', 'GitHub repo for error issues (owner/repo)')
 	.option('--slack-webhook <url>', 'Slack webhook URL for alerts')
 	.option('--account-name <name>', 'Human-readable account name')
+	.option('--register-budget-alert <threshold>', 'Opt-in: subscribe to CF Budget Alert at $threshold/mo (alert-only)')
+	.option('--alert-email <addr>', 'Recipient email for the Budget Alert (defaults to billing email)')
+	.option('--alert-webhook <url>', 'Reuse-or-create webhook destination for the Budget Alert')
 	.action(initCommand);
 
 program
@@ -92,7 +98,35 @@ program
 	.description('Show account-wide CF service usage vs plan allowances')
 	.option('--json', 'Output as JSON')
 	.option('--detail', 'Include per-gateway/provider/model AI Gateway breakdown')
+	.option('--admin-token <token>', 'Admin token if the worker has CF_MONITOR_REQUIRE_AUTH_FOR_READS=true (default: $CF_MONITOR_ADMIN_TOKEN)')
 	.action(usageCommand);
+
+program
+	.command('protection')
+	.description('Show the protection coverage report (audit-only — heuristic score 0-100)')
+	.option('--json', 'Output as JSON')
+	.option('--admin-token <token>', 'Admin token (default: $CF_MONITOR_ADMIN_TOKEN). /protection is always auth-required.')
+	.action(protectionCommand);
+
+const probeCmd = program
+	.command('probe')
+	.description('Read-only diagnostic probes against the Cloudflare API');
+
+probeCmd
+	.command('billing')
+	.description('Probe the billing endpoints (read-only; saves redacted output)')
+	.option('--account-id <id>', 'Cloudflare account ID (default: $CLOUDFLARE_ACCOUNT_ID)')
+	.option('--token <token>', 'Cloudflare API token (default: $CLOUDFLARE_API_TOKEN)')
+	.option('--out <dir>', 'Output directory for the redacted probe JSON', 'docs/research/probes')
+	.action(probeBillingCommand);
+
+probeCmd
+	.command('alerting')
+	.description('Probe the Notifications/Alerting endpoints (read-only; saves redacted output)')
+	.option('--account-id <id>', 'Cloudflare account ID (default: $CLOUDFLARE_ACCOUNT_ID)')
+	.option('--token <token>', 'Cloudflare API token (default: $CLOUDFLARE_API_TOKEN)')
+	.option('--out <dir>', 'Output directory for the redacted probe JSON', 'docs/research/probes')
+	.action(probeAlertingCommand);
 
 program
 	.command('upgrade')

@@ -1,0 +1,1326 @@
+{
+  "probed_at": "2026-05-28T05:09:36.778Z",
+  "account_id": "<ACCOUNT_ID>",
+  "note": "Read-only probe; sensitive values redacted. Re-run with a Billing Read token to capture /billing/usage.",
+  "results": [
+    {
+      "endpoint": "/billing/profile",
+      "status": 200,
+      "outcome": "payload",
+      "body": {
+        "errors": [],
+        "messages": [],
+        "result": {
+          "id": "<REDACTED_ID>",
+          "first_name": "<REDACTED>",
+          "last_name": "<REDACTED>",
+          "billing_email": "<REDACTED>",
+          "company": "<REDACTED>",
+          "address": "<REDACTED>",
+          "city": "Abbotsford",
+          "state": "VIC",
+          "zipcode": "<REDACTED>",
+          "country": "AU",
+          "account_type": "business"
+        },
+        "success": true
+      }
+    },
+    {
+      "endpoint": "/billing/history",
+      "status": 200,
+      "outcome": "payload",
+      "body": {
+        "errors": [],
+        "messages": [],
+        "result": [
+          {
+            "id": "<REDACTED_ID>",
+            "type": "invoice",
+            "occurred_at": "2026-05-02T10:54:27Z",
+            "amount": 5.76,
+            "amount_to_pay": 0,
+            "currency": "usd",
+            "invoice_id": "<REDACTED>",
+            "receipt_id": "<REDACTED>",
+            "status": "CLOSED",
+            "source": "stripe"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "type": "invoice",
+            "occurred_at": "2026-04-02T10:45:13Z",
+            "amount": 15.26,
+            "amount_to_pay": 0,
+            "currency": "usd",
+            "invoice_id": "<REDACTED>",
+            "receipt_id": "<REDACTED>",
+            "status": "CLOSED",
+            "source": "stripe"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "type": "invoice",
+            "occurred_at": "2026-03-02T10:36:15Z",
+            "amount": 14.89,
+            "amount_to_pay": 0,
+            "currency": "usd",
+            "invoice_id": "<REDACTED>",
+            "receipt_id": "<REDACTED>",
+            "status": "CLOSED",
+            "source": "stripe"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "type": "invoice",
+            "occurred_at": "2026-02-19T00:44:29Z",
+            "amount": 1.96,
+            "amount_to_pay": 0,
+            "currency": "usd",
+            "invoice_id": "<REDACTED>",
+            "receipt_id": "<REDACTED>",
+            "status": "CLOSED",
+            "source": "stripe"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "type": "invoice",
+            "occurred_at": "2026-01-02T10:20:28Z",
+            "amount": 278.2,
+            "amount_to_pay": 0,
+            "currency": "usd",
+            "invoice_id": "<REDACTED>",
+            "receipt_id": "<REDACTED>",
+            "status": "CLOSED",
+            "source": "stripe"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "type": "invoice",
+            "occurred_at": "2025-12-02T10:18:54Z",
+            "amount": 5,
+            "amount_to_pay": 0,
+            "currency": "usd",
+            "invoice_id": "<REDACTED>",
+            "receipt_id": "<REDACTED>",
+            "status": "CLOSED",
+            "source": "stripe"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "type": "invoice",
+            "occurred_at": "2025-11-22T05:44:21Z",
+            "amount": 1.67,
+            "amount_to_pay": 0,
+            "currency": "usd",
+            "invoice_id": "<REDACTED>",
+            "receipt_id": "<REDACTED>",
+            "status": "CLOSED",
+            "source": "stripe"
+          }
+        ],
+        "result_info": {
+          "page": 1,
+          "per_page": 50,
+          "next_page": false
+        },
+        "success": true
+      }
+    },
+    {
+      "endpoint": "/billing/usage?time_delta=day",
+      "status": 200,
+      "outcome": "payload",
+      "body": {
+        "result": {
+          "rows": 1,
+          "data": [
+            {
+              "metrics": [
+                [
+                  0
+                ]
+              ]
+            }
+          ],
+          "data_lag": 0,
+          "min": {},
+          "max": {},
+          "totals": {},
+          "time_intervals": [
+            [
+              "2026-05-28T00:00:00Z",
+              "2026-05-28T23:59:59Z"
+            ]
+          ],
+          "query": {
+            "dimensions": [],
+            "metrics": [
+              "streamMinutesViewed"
+            ],
+            "since": "2026-05-27T23:09:00Z",
+            "until": "2026-05-28T23:59:59Z",
+            "time_delta": "day",
+            "limit": 100000
+          }
+        },
+        "success": true,
+        "errors": [],
+        "messages": []
+      }
+    },
+    {
+      "endpoint": "/subscriptions",
+      "status": 200,
+      "outcome": "payload",
+      "body": {
+        "errors": [],
+        "messages": [],
+        "result": [
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2026-03-30T05:04:58Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-09-27T08:20:57Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-10-09T03:23:57Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2026-03-30T05:06:57Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-11-03T02:43:50Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-10-31T05:33:25Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2026-04-14T03:51:09Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "workers_paid",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "account",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "kind": "enum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "kind": "enum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "kind": "enum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              }
+            ],
+            "frequency": "monthly",
+            "current_period_start": "2026-05-02T00:00:00Z",
+            "current_period_end": "2026-06-02T00:00:00Z",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 5,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-11-22T05:44:27Z",
+            "external_id": "<REDACTED_ID>",
+            "intent": "PAYGO"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2026-04-14T03:53:00Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "r2_paid",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "account",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "kind": "enum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 1,
+                "default": 1,
+                "kind": "usage"
+              }
+            ],
+            "frequency": "monthly",
+            "current_period_start": "2026-05-02T00:00:00Z",
+            "current_period_end": "2026-06-02T00:00:00Z",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-11-04T02:48:29Z",
+            "external_id": "<REDACTED_ID>",
+            "intent": "PAYGO"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-11-03T02:19:22Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-10-09T03:25:04Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-11-03T02:42:03Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-10-09T03:11:03Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2026-05-11T04:51:16Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-11-03T02:40:38Z",
+            "intent": "FREE"
+          },
+          {
+            "id": "<REDACTED_ID>",
+            "rate_plan": {
+              "id": "free",
+              "public_name": "<REDACTED>",
+              "currency": "USD",
+              "scope": "zone",
+              "externally_managed": false,
+              "sets": null,
+              "is_contract": false
+            },
+            "component_values": [
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 3,
+                "kind": "sum"
+              },
+              {
+                "name": "<REDACTED>",
+                "display_name": "<REDACTED>",
+                "value": 0,
+                "kind": "enum"
+              }
+            ],
+            "zone": {
+              "id": "<REDACTED_ID>",
+              "name": "<REDACTED>"
+            },
+            "frequency": "not-applicable",
+            "state": "Paid",
+            "currency": "USD",
+            "price": 0,
+            "trial": null,
+            "product": {
+              "name": "<REDACTED>",
+              "period": "",
+              "billing": "",
+              "public_name": "<REDACTED>",
+              "duration": 0
+            },
+            "cancel_at_period_end": false,
+            "client_secrets": null,
+            "handler": "stripe",
+            "created_date": "2025-10-09T03:21:37Z",
+            "intent": "FREE"
+          }
+        ],
+        "result_info": {
+          "page": 1,
+          "per_page": 25,
+          "total_pages": 1,
+          "count": 17,
+          "total_count": 17,
+          "next_page": false
+        },
+        "success": true
+      }
+    }
+  ]
+}

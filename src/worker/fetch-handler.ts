@@ -1,5 +1,5 @@
 import { KV, PRIORITY_MAP } from '../constants.js';
-import type { AiGatewayUsageSnapshot, MonitorWorkerEnv, TailOutcome } from '../types.js';
+import type { AiGatewayUsageSnapshot, MonitorWorkerEnv, TailOutcome, UsageConfidence } from '../types.js';
 import { getSelfHealth, checkCronStaleness } from './self-monitor.js';
 import { collectAccountMetrics } from './crons/collect-metrics.js';
 import { checkBudgets } from './crons/budget-check.js';
@@ -14,19 +14,73 @@ import { matchTransientPattern } from './errors/patterns.js';
 import { formatBudgetWarning, formatErrorAlert } from './alerts/slack.js';
 import { collectAccountUsage } from './crons/collect-account-usage.js';
 import { collectAiGatewayUsage } from './crons/collect-ai-gateway-usage.js';
+import { buildProtectionReport, redactProtectionReport } from './protection-coverage.js';
+import { collectQueueRealtime } from './crons/collect-queue-realtime.js';
+import { discoverPagesProjects } from './crons/discover-pages-projects.js';
+import { discoverVectorizeIndexes } from './crons/discover-vectorize-indexes.js';
 import { getPlanOrCached, getBillingPeriodOrCached } from './account/subscriptions.js';
 import { getAllowancesForPlan } from './account/plan-allowances.js';
 
-// CORS headers for GET endpoints — allows browser-based monitoring dashboards
+// CORS headers for GET endpoints — allows browser-based monitoring dashboards.
+// `Authorization` is in Allow-Headers so token-bearing CORS requests preflight cleanly.
+// We deliberately do NOT set Access-Control-Allow-Credentials, so the open Origin: * policy
+// cannot leak authenticated bodies cross-origin via the browser.
 const CORS_HEADERS: Record<string, string> = {
 	'Access-Control-Allow-Origin': '*',
 	'Access-Control-Allow-Methods': 'GET, OPTIONS',
-	'Access-Control-Allow-Headers': 'Content-Type',
+	'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 /** Response.json() with CORS headers for GET endpoints. */
 function jsonWithCors(data: unknown, status = 200): Response {
 	return Response.json(data, { status, headers: CORS_HEADERS });
+}
+
+// =============================================================================
+// READ-ENDPOINT AUTH (Phase 9 — Security Hardening)
+// =============================================================================
+//
+// Auth classification per the brief:
+//   - 'safe_public'         → always reachable, no auth.
+//   - 'owner_only'          → public by default; auth-required when CF_MONITOR_REQUIRE_AUTH_FOR_READS=true.
+//   - 'always_auth_required'→ auth-required regardless of flag (default-safe). /protection is the only one.
+//
+// `owner_only` is the backward-compat-friendly group (Phase 4 byte-identical invariant for /usage).
+// `/protection` is locked down by default because it explicitly lists weaknesses.
+type AuthMode = 'safe_public' | 'owner_only' | 'always_auth_required';
+
+const READ_ENDPOINT_AUTH: Record<string, AuthMode> = {
+	'/_health':           'safe_public',
+	'/protection':        'always_auth_required',
+	'/self-health':       'owner_only',
+	'/status':            'owner_only',
+	'/errors':            'owner_only',
+	'/workers':           'owner_only',
+	'/budgets':           'owner_only',
+	'/plan':              'owner_only',
+	'/usage':             'owner_only',
+	'/usage/ai-gateway':  'owner_only',
+};
+
+/**
+ * Returns null when the request is allowed; returns a 401 Response when it isn't.
+ * Uses the existing timing-safe `verifyAdminToken` (no parallel auth system).
+ */
+function authoriseRead(request: Request, env: MonitorWorkerEnv, mode: AuthMode): Response | null {
+	if (mode === 'safe_public') return null;
+	if (mode === 'owner_only' && env.CF_MONITOR_REQUIRE_AUTH_FOR_READS !== 'true') return null;
+	if (verifyAdminToken(request, env)) return null;
+	return new Response(
+		JSON.stringify({ error: 'Unauthorized' }),
+		{
+			status: 401,
+			headers: {
+				'content-type': 'application/json',
+				'WWW-Authenticate': 'Bearer realm="cf-monitor", charset="UTF-8"',
+				...CORS_HEADERS,
+			},
+		},
+	);
 }
 
 /**
@@ -79,6 +133,18 @@ export async function handleFetch(
 	}
 
 	try {
+		const authMode = READ_ENDPOINT_AUTH[path];
+		if (authMode !== undefined) {
+			const denied = authoriseRead(request, env, authMode);
+			if (denied) {
+				// Special case: /protection has an opt-in public-redacted variant.
+				if (path === '/protection' && env.CF_MONITOR_PROTECTION_PUBLIC === 'redacted') {
+					return handleProtection(env, { redact: true });
+				}
+				return denied;
+			}
+		}
+
 		if (path === '/_health') return handleHealth(env);
 		if (path === '/self-health') return handleSelfHealth(env);
 		if (path === '/status') return handleStatus(env);
@@ -88,6 +154,7 @@ export async function handleFetch(
 		if (path === '/plan') return handlePlan(env);
 		if (path === '/usage') return handleUsage(env);
 		if (path === '/usage/ai-gateway') return handleUsageAiGateway(url, env);
+		if (path === '/protection') return handleProtection(env);
 
 		return Response.json({ error: 'Not found' }, { status: 404 });
 	} catch (err) {
@@ -101,11 +168,14 @@ export async function handleFetch(
 // =============================================================================
 
 async function handleHealth(env: MonitorWorkerEnv): Promise<Response> {
-	return jsonWithCors({
-		healthy: true,
-		account: env.ACCOUNT_NAME,
-		timestamp: Date.now(),
-	});
+	// `account` is dropped when lock-down mode is enabled — `/_health` stays publicly reachable
+	// for Gatus uptime probes, but it must not leak the account name to anonymous callers under
+	// that posture.
+	const body: Record<string, unknown> = { healthy: true, timestamp: Date.now() };
+	if (env.CF_MONITOR_REQUIRE_AUTH_FOR_READS !== 'true') {
+		body.account = env.ACCOUNT_NAME;
+	}
+	return jsonWithCors(body);
 }
 
 async function handleSelfHealth(env: MonitorWorkerEnv): Promise<Response> {
@@ -199,9 +269,13 @@ async function handlePlan(env: MonitorWorkerEnv): Promise<Response> {
 
 async function handleUsage(env: MonitorWorkerEnv): Promise<Response> {
 	const today = new Date().toISOString().slice(0, 10);
-	const [snapshotRaw, aiGatewayRaw, plan, billingPeriod] = await Promise.all([
+	const [snapshotRaw, aiGatewayRaw, queueRealtimeRaw, pagesRaw, vectorizeRaw, budgetAlertRaw, plan, billingPeriod] = await Promise.all([
 		env.CF_MONITOR_KV.get(`${KV.USAGE_ACCOUNT}${today}`),
 		env.CF_MONITOR_KV.get(`${KV.USAGE_ACCOUNT_AI_GATEWAY}${today}`),
+		env.CF_MONITOR_KV.get(`${KV.USAGE_QUEUE_REALTIME}${today}`),
+		env.CF_MONITOR_KV.get(`${KV.USAGE_PAGES_DISCOVERY}${today}`),
+		env.CF_MONITOR_KV.get(`${KV.USAGE_VECTORIZE_DISCOVERY}${today}`),
+		env.CF_MONITOR_KV.get(KV.CONFIG_BUDGET_ALERT),
 		getPlanOrCached(env),
 		getBillingPeriodOrCached(env),
 	]);
@@ -228,15 +302,52 @@ async function handleUsage(env: MonitorWorkerEnv): Promise<Response> {
 		}
 	}
 
+	// Confidence labels per /usage section. Every key MUST correspond 1:1 to a visible field
+	// so a CLI consumer can do `confidence[fieldName]` without translation. See
+	// docs/research/billing-endpoints-follow-up.md "Confidence label vocabulary".
+	const confidence: UsageConfidence = {
+		workers: 'analytics_estimate',
+		d1: 'analytics_estimate',
+		kv: 'analytics_estimate',
+		r2: 'analytics_estimate',
+		durableObjects: 'analytics_estimate',
+		// AI Gateway: first-party per-request logs; provider cost is pass-through, NOT the full
+		// Cloudflare bill (CF's own neuron/request charges add on top). Still billing-grade for
+		// what the gateway observed — see collect-ai-gateway-usage.ts disclaimer.
+		aiGateway: 'billing_authoritative',
+		plan: 'billing_authoritative',          // sourced from /subscriptions — plan state only
+		queues_realtime: 'runtime_metered',     // direct REST read of CF realtime backlog
+		pages: 'runtime_metered',               // documented CF API (GET /accounts/{id}/pages/projects)
+		vectorize_indexes: 'runtime_metered',   // documented CF API (GET /accounts/{id}/vectorize/indexes)
+		billable_usage_dashboard: 'dashboard_documented_no_public_api',
+		// Opt-in CF Budget Alert subscription (Tier 2 Part F). Alert-only — not enforcement.
+		budget_alert: 'alert_only',
+	};
+
 	return jsonWithCors({
 		account: env.ACCOUNT_NAME,
 		plan,
 		billingPeriod: billingPeriod ?? undefined,
 		allowances,
+		confidence,
 		usage: snapshot,
-		disclaimer: 'Approximate — from CF GraphQL Analytics API. AI Gateway totals come from per-request log aggregates.',
+		queues_realtime: queueRealtimeRaw ? safeJsonParse(queueRealtimeRaw) : null,
+		pages: pagesRaw ? safeJsonParse(pagesRaw) : null,
+		vectorize_indexes: vectorizeRaw ? safeJsonParse(vectorizeRaw) : null,
+		budget_alert: budgetAlertRaw ? safeJsonParse(budgetAlertRaw) : null,
+		disclaimer: 'Approximate — from CF GraphQL Analytics API. AI Gateway totals come from per-request log aggregates. See `confidence` map for per-field source/grade.',
 		timestamp: Date.now(),
 	});
+}
+
+function safeJsonParse(raw: string): unknown {
+	try { return JSON.parse(raw); } catch { return null; }
+}
+
+async function handleProtection(env: MonitorWorkerEnv, options?: { redact?: boolean }): Promise<Response> {
+	const report = await buildProtectionReport(env);
+	const body = options?.redact ? redactProtectionReport(report) : report;
+	return jsonWithCors(body);
 }
 
 async function handleUsageAiGateway(url: URL, env: MonitorWorkerEnv): Promise<Response> {
@@ -352,6 +463,9 @@ const CRON_HANDLERS: Record<string, (env: MonitorWorkerEnv) => Promise<void>> = 
 	'collect-metrics': collectAccountMetrics,
 	'collect-account-usage': collectAccountUsage,
 	'collect-ai-gateway-usage': collectAiGatewayUsage,
+	'collect-queue-realtime': collectQueueRealtime,
+	'discover-pages-projects': discoverPagesProjects,
+	'discover-vectorize-indexes': discoverVectorizeIndexes,
 	'synthetic-health': runSyntheticHealthCheck,
 	'worker-discovery': discoverWorkers,
 	'daily-rollup': runDailyRollup,

@@ -66,5 +66,5 @@ When cf-monitor itself has problems, use the self-monitoring endpoints:
 
 - `GET /self-health` — Returns 200 (healthy) or 503 (stale crons). Shows per-handler last run times, error counts, and stale cron list.
 - `POST /admin/cron/staleness-check` — Manually trigger staleness detection.
-- KV inspection: Read `self:v1:cron:last_run` for handler execution history as JSON blob.
+- KV inspection: Read `self:v2:cron:<handler>` per-handler keys (race-safe; canonical since v0.3.7). The legacy single-blob `self:v1:cron:last_run` is read as a fallback only.
 - AE query: `SELECT blob3 AS handler, count() FROM "cf-monitor" WHERE blob2 LIKE 'self:%' GROUP BY handler` — handler invocation counts.
