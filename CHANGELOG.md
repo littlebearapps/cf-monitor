@@ -4,6 +4,23 @@ All notable changes to cf-monitor are documented here. This project follows [Kee
 
 ## [Unreleased]
 
+### Added
+- **AI Gateway usage collection** (#111) — new hourly cron `collect-ai-gateway-usage` pulls the previous hour of logs from the Cloudflare AI Gateway REST API (`GET /accounts/{id}/ai-gateway/gateways/{gw}/logs`), aggregates by `(gateway, provider, model)`, and writes:
+  - One Analytics Engine row per (gateway, provider, model, hour) with `requests`, `tokens_in`, `tokens_out`, `cost`, `cached`, `errors`, `p50_duration_ms` at new AE positions 20–26 (append-only).
+  - One merged daily KV blob per account at `usage:account:ai-gateway:{YYYY-MM-DD}` (32-day TTL).
+- New `GET /usage/ai-gateway` endpoint returns the full per-gateway/provider/model breakdown for today, or any of the last 32 days via `?date=YYYY-MM-DD`.
+- `GET /usage` now merges AI Gateway totals (requests, tokens, USD cost, cached, errors) into `services.aiGateway` when today's snapshot exists.
+- Admin trigger `POST /admin/cron/collect-ai-gateway-usage` (requires `ADMIN_TOKEN`).
+- `AiGatewayUsageSnapshot` type exported from `@littlebearapps/cf-monitor` for downstream tooling.
+- Cost guard: hard cap of 5 log pages × 1000 logs per gateway per hour; hot gateways trigger a daily Slack `ai-gateway-pagecap` alert with KV dedup. Logs once per UTC day on missing token / 401 / 403 / 404 — fail-open semantics identical to plan detection.
+- 15 new unit tests (395 total, up from 380).
+
+### Changed
+- `AE_FIELDS` extended with 7 AI Gateway positions (20–26); `AE_FIELD_COUNT` bumped from 20 to 27. Append-only — existing positions 0–19 are untouched, backward-compatible with platform-consumer-sdk layout.
+- `ServiceUsageSnapshot.services.aiGateway` extended from `{ requests }` to also accept optional `tokens_in`, `tokens_out`, `cost`, `cached`, `errors`. Existing callers continue to type-check.
+- Documentation: `docs/guides/account-usage.md` removes the "AI Gateway not available" caveat and adds a full AI Gateway section; `docs/getting-started.md` and `docs/security.md` document the optional `AI Gateway: Read` token scope; `docs/faq/faq.md` updates the "What data does cf-monitor collect" and token-scopes answers.
+- `tests/sdk/metrics.test.ts` and `tests/worker/self-monitor.test.ts` now reference `AE_FIELD_COUNT` instead of hardcoded `20` so future AE additions don't break them.
+
 ## [0.3.11] - 2026-05-27
 
 ## [0.3.10] - 2026-05-27

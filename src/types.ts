@@ -182,6 +182,14 @@ export interface MonitorWorkerEnv {
 	GATUS_HEARTBEAT_URL?: string;
 	GATUS_TOKEN?: string;
 	ADMIN_TOKEN?: string;
+	/** If set to the string "true", all `owner_only` read endpoints require Authorization: Bearer
+	 *  $ADMIN_TOKEN. /_health stays reachable (but drops the `account` field). /protection is
+	 *  always auth-required regardless of this flag. Phase 9 (Security Hardening). */
+	CF_MONITOR_REQUIRE_AUTH_FOR_READS?: string;
+	/** If set to "redacted", `/protection` returns a redacted body (no worker / queue / page /
+	 *  index / account names) to anonymous callers instead of 401. Severity / status / score /
+	 *  counts remain visible. Off by default; default-safe = 401 without auth. */
+	CF_MONITOR_PROTECTION_PUBLIC?: string;
 	GITHUB_WEBHOOK_SECRET?: string;
 	AI?: Ai;
 	/** Custom transient patterns resolved from cf-monitor.yaml (#92). */
@@ -255,11 +263,241 @@ export interface ServiceUsageSnapshot {
 		r2: { classA: number; classB: number; storageMb?: number };
 		workers: { requests: number; cpuMs: number };
 		ai: { neurons: number; requests: number };
-		aiGateway: { requests: number };
+		/**
+		 * AI Gateway hourly aggregate (v0.4.0).
+		 * Extended from `{ requests }` — additional fields are optional so callers
+		 * predating v0.4.0 continue to type-check.
+		 */
+		aiGateway: {
+			requests: number;
+			tokens_in?: number;
+			tokens_out?: number;
+			cost?: number;
+			cached?: number;
+			errors?: number;
+		};
 		durableObjects: { requests: number; storedBytes: number };
 		vectorize: { queries: number };
 		queues: { produced: number; consumed: number };
 	}>;
+}
+
+// =============================================================================
+// CONFIDENCE LABELS (Tier 2)
+// =============================================================================
+
+/**
+ * Source/confidence label for each metric block in the `/usage` response. The vocabulary
+ * tracks the research docs (docs/research/billing-endpoints-follow-up.md) so a consumer
+ * can render a single legend across docs + UI.
+ */
+export type ConfidenceLabel =
+	| 'billing_authoritative'              // /subscriptions plan, /billing/history past invoices, AI Gateway logs
+	| 'analytics_estimate'                 // GraphQL Analytics datasets (CF explicitly states not billing-grade)
+	| 'runtime_metered'                    // SDK binding proxy, queue realtime REST, REST list endpoints
+	| 'user_configured'                    // user-supplied budgets
+	| 'static_catalogue'                   // plan-allowance constants from src/worker/account/plan-allowances.ts
+	| 'alert_only'                         // Budget Alerts (CF Notifications)
+	| 'dashboard_documented_no_public_api' // Billable Usage dashboard
+	| 'verified_undocumented'              // /billing/profile etc. — verified shape, no Cloudflare docs page
+	| 'unknown';
+
+/**
+ * Per-field confidence map embedded in the `/usage` response. Every key MUST correspond
+ * to a visible field/section of the response so a CLI consumer can do `confidence[fieldName]`
+ * lookup without translation.
+ */
+export interface UsageConfidence {
+	workers?: ConfidenceLabel;
+	d1?: ConfidenceLabel;
+	kv?: ConfidenceLabel;
+	r2?: ConfidenceLabel;
+	durableObjects?: ConfidenceLabel;
+	aiGateway?: ConfidenceLabel;
+	vectorize?: ConfidenceLabel;
+	plan?: ConfidenceLabel;
+	queues_realtime?: ConfidenceLabel;
+	pages?: ConfidenceLabel;
+	vectorize_indexes?: ConfidenceLabel;
+	billable_usage_dashboard?: ConfidenceLabel;
+	budget_alert?: ConfidenceLabel;
+}
+
+// =============================================================================
+// PROTECTION COVERAGE REPORT (Tier 2 audit layer, Phase 7)
+// =============================================================================
+
+export type ProtectionStatus =
+	| 'protected'
+	| 'partially_protected'
+	| 'unprotected'
+	| 'unknown'
+	| 'not_applicable';
+
+export type ProtectionSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
+
+/**
+ * A single audit finding produced by the protection-coverage engine. Audit-only — destructive
+ * actions belong to a future Tier 3 controller-token layer. Every finding from this phase has
+ * `destructive_action_required: false`.
+ */
+export interface ProtectionFinding {
+	/** Stable kebab-case id (`billing-reality-check`, `queue-backlog:<queue_id>`, …). */
+	id: string;
+	title: string;
+	severity: ProtectionSeverity;
+	status: ProtectionStatus;
+	resource_type: string;
+	resource_id?: string;
+	resource_name?: string;
+	evidence: string;
+	missing_controls: string[];
+	recommended_actions: string[];
+	confidence: ConfidenceLabel;
+	source: string;
+	destructive_action_required: boolean;
+	docs_url?: string;
+	docs_ref?: string;
+}
+
+export interface ProtectionCoverageReport {
+	generated_at: string;
+	account: string;
+	summary: {
+		score: number;
+		protected: number;
+		partially_protected: number;
+		unprotected: number;
+		unknown: number;
+		not_applicable: number;
+		critical: number;
+		high: number;
+		medium: number;
+		low: number;
+		info: number;
+	};
+	findings: ProtectionFinding[];
+	confidence: { overall: ConfidenceLabel; usage: ConfidenceLabel; runtime: ConfidenceLabel; billing: ConfidenceLabel };
+	caveats: string[];
+}
+
+// =============================================================================
+// TIER-2 DISCOVERY SNAPSHOTS (queues realtime, pages, vectorize)
+// =============================================================================
+
+/** Per-queue realtime backlog row from GET /accounts/{id}/queues/{queue_id}/metrics. */
+export interface QueueRealtimeRow {
+	id: string;
+	name: string;
+	backlog_count?: number;
+	backlog_bytes?: number;
+	oldest_message_timestamp_ms?: number;
+	/** Per-queue error message if the metrics call failed; absent on success. */
+	error?: string;
+}
+
+/** Snapshot written by collect-queue-realtime cron (hourly). */
+export interface QueueRealtimeSnapshot {
+	collected_at: string;
+	source: 'cloudflare_rest';
+	confidence: ConfidenceLabel;
+	queues: QueueRealtimeRow[];
+	/** True if any per-queue metrics call failed; surface this in UI. */
+	partial: boolean;
+}
+
+/** Per-project row from GET /accounts/{id}/pages/projects. */
+export interface PagesProjectRow {
+	name: string;
+	id?: string;
+	production_branch?: string;
+	created_on?: string;
+	modified_on?: string;
+	latest_deployment?: {
+		id?: string;
+		stage?: string;
+		created_on?: string;
+	};
+	/**
+	 * Whether the project uses Pages Functions (billed as Workers). We don't probe per-project
+	 * to determine this — left as 'unknown' to avoid implying every Pages project is billable.
+	 * Static assets are free; only Functions usage incurs Worker billing.
+	 */
+	functions_usage: 'unknown';
+}
+
+/** Snapshot written by discover-pages-projects cron (daily). */
+export interface PagesDiscoverySnapshot {
+	collected_at: string;
+	source: 'cloudflare_rest';
+	confidence: ConfidenceLabel;
+	projects: PagesProjectRow[];
+	/** True if the listing exceeded per_page and was truncated. */
+	partial: boolean;
+}
+
+/** Per-index row from GET /accounts/{id}/vectorize/indexes. */
+export interface VectorizeIndexRow {
+	name: string;
+	dimensions?: number;
+	metric?: string;
+	description?: string;
+	created_on?: string;
+	modified_on?: string;
+}
+
+/** Snapshot written by discover-vectorize-indexes cron (daily). Metadata only — no vector counts. */
+export interface VectorizeDiscoverySnapshot {
+	collected_at: string;
+	source: 'cloudflare_rest';
+	confidence: ConfidenceLabel;
+	indexes: VectorizeIndexRow[];
+	/** Always false this pass — we do not paginate to compute totals. */
+	partial: boolean;
+	/** Documented limitation: per-index vector counts not collected. */
+	caveat: string;
+}
+
+// =============================================================================
+// AI GATEWAY USAGE SNAPSHOT (v0.4.0)
+// =============================================================================
+
+/** Per-model aggregate for an AI Gateway provider. */
+export interface AiGatewayModelAggregate {
+	requests: number;
+	tokens_in: number;
+	tokens_out: number;
+	cost: number;
+	cached: number;
+	errors: number;
+	p50_duration_ms: number;
+}
+
+/** Daily AI Gateway usage breakdown, written to KV by collect-ai-gateway-usage. */
+export interface AiGatewayUsageSnapshot {
+	/** YYYY-MM-DD (UTC). */
+	date: string;
+	/** Keyed by gateway id. */
+	gateways: Record<string, {
+		/** Keyed by provider name (e.g. 'openai', 'google-ai-studio'). */
+		providers: Record<string, {
+			/** Keyed by model name. */
+			models: Record<string, AiGatewayModelAggregate>;
+		}>;
+	}>;
+	/** Account-wide totals (sum across gateways/providers/models). */
+	totals: {
+		requests: number;
+		tokens_in: number;
+		tokens_out: number;
+		cost: number;
+		cached: number;
+		errors: number;
+	};
+	/** Last update epoch ms. */
+	lastUpdated: number;
+	/** Pricing pass-through note from CF. */
+	disclaimer: string;
 }
 
 // =============================================================================

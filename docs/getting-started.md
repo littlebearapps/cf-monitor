@@ -10,6 +10,7 @@ This guide walks you through installing cf-monitor, deploying the monitor worker
 - **Wrangler CLI** installed (`npm install -g wrangler`)
 - **A Cloudflare API token** with Workers and Analytics Engine permissions
   - *Optional but recommended*: include `Account Settings: Read` permission for automatic plan detection (without it, cf-monitor defaults to Workers Paid plan budgets)
+  - *Optional*: include `AI Gateway: Read` permission to collect per-gateway/provider/model usage (tokens, cost, cache rate) into `/usage` and `/usage/ai-gateway`. Without it, AI Gateway collection silently skips and logs a daily warning.
 
 ## Step 1: Install the SDK
 

@@ -14,7 +14,7 @@ import {
 	hasCredentials,
 	loadTestResources,
 	fetchWorker,
-	fetchWorkerPost,
+	fetchAdminPost,
 	listTestKVKeys,
 	readTestKVKey,
 	sleep,
@@ -157,7 +157,7 @@ describe.skipIf(SKIP)('error capture: exception pipeline (#33)', () => {
 
 describe.skipIf(SKIP)('error capture: synthetic health (no tail dependency)', () => {
 	it('synthetic-health cron validates CB pipeline', async () => {
-		const resp = await fetchWorkerPost(monitorUrl, '/admin/cron/synthetic-health', {});
+		const resp = await fetchAdminPost(monitorUrl, '/admin/cron/synthetic-health', {});
 		expect(resp.status).toBe(200);
 
 		const body = await resp.json() as { ok: boolean; cron: string };

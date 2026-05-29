@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createMetrics, isZero, toDataPoint } from '../../src/sdk/metrics.js';
-import { AE_FIELDS } from '../../src/constants.js';
+import { AE_FIELDS, AE_FIELD_COUNT } from '../../src/constants.js';
 
 describe('createMetrics', () => {
 	it('returns zeroed accumulator with requests = 1', () => {
@@ -53,7 +53,7 @@ describe('toDataPoint', () => {
 		expect(dp.doubles[AE_FIELDS.kvReads]).toBe(5);
 		expect(dp.doubles[AE_FIELDS.aiNeurons]).toBe(100);
 		expect(dp.doubles[AE_FIELDS.requests]).toBe(1);
-		expect(dp.doubles).toHaveLength(20);
+		expect(dp.doubles).toHaveLength(AE_FIELD_COUNT);
 	});
 
 	it('parses featureId into blob fields', () => {

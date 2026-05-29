@@ -11,7 +11,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
 	hasCredentials,
 	loadTestResources,
-	fetchWorkerPost,
+	fetchAdminPost,
 	waitForConsumerStatus,
 	sleep,
 	type TestEnv,
@@ -35,8 +35,8 @@ beforeAll(() => {
 afterAll(async () => {
 	if (SKIP) return;
 	try {
-		await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cb/reset', { featureId: TEST_FEATURE });
-		await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cb/account', { status: 'clear' });
+		await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cb/reset', { featureId: TEST_FEATURE });
+		await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cb/account', { status: 'clear' });
 	} catch {
 		// Best effort
 	}
@@ -45,7 +45,7 @@ afterAll(async () => {
 describe.skipIf(SKIP)('circuit breaker: feature-level', () => {
 	it('trip (STOP) returns 503 from consumer', async () => {
 		// Trip CB via monitor worker admin endpoint (worker-side KV write)
-		const tripResp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cb/trip', {
+		const tripResp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cb/trip', {
 			featureId: TEST_FEATURE,
 			reason: 'integration-test',
 			ttlSeconds: 300,
@@ -66,7 +66,7 @@ describe.skipIf(SKIP)('circuit breaker: feature-level', () => {
 
 	it('reset (GO) restores consumer to 200', async () => {
 		// Reset CB via monitor worker admin endpoint
-		const resetResp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cb/reset', {
+		const resetResp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cb/reset', {
 			featureId: TEST_FEATURE,
 		});
 		expect(resetResp.status).toBe(200);
@@ -86,13 +86,13 @@ describe.skipIf(SKIP)('circuit breaker: feature-level', () => {
 describe.skipIf(SKIP)('circuit breaker: account-level', () => {
 	// Ensure clean state before account tests
 	beforeAll(async () => {
-		await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cb/reset', { featureId: TEST_FEATURE });
+		await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cb/reset', { featureId: TEST_FEATURE });
 		await sleep(2000);
 		await waitForConsumerStatus(resources.consumerWorkerUrl, '/api/test', 200, 20_000);
 	}, 30_000);
 
 	it('account paused returns 503', async () => {
-		const pauseResp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cb/account', {
+		const pauseResp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cb/account', {
 			status: 'paused',
 			ttlSeconds: 300,
 		});
@@ -107,7 +107,7 @@ describe.skipIf(SKIP)('circuit breaker: account-level', () => {
 	}, 45_000);
 
 	it('account CB cleared restores service', async () => {
-		const clearResp = await fetchWorkerPost(resources.monitorWorkerUrl, '/admin/cb/account', {
+		const clearResp = await fetchAdminPost(resources.monitorWorkerUrl, '/admin/cb/account', {
 			status: 'clear',
 		});
 		expect(clearResp.status).toBe(200);

@@ -1,6 +1,6 @@
 # CLAUDE.md - cf-monitor
 
-**Last Updated**: 2026-05-27
+**Last Updated**: 2026-05-28
 
 ---
 
@@ -45,7 +45,7 @@
 
 **Quick Commands**:
 ```bash
-npm test                    # Run unit tests (365 tests, vitest)
+npm test                    # Run unit tests (461 tests, vitest)
 npm run test:integration    # Run integration tests (53 tests across 10 files, needs CF credentials)
 npm run typecheck           # TypeScript check (Workers + CLI)
 npm run build:cli           # Build CLI for npm publish
@@ -83,7 +83,7 @@ cf-monitor/
 │   │   ├── index.ts          # Export: { fetch, scheduled, tail }
 │   │   ├── tail-handler.ts   # Error capture → fingerprint → GitHub issue
 │   │   ├── scheduled-handler.ts # Cron multiplexer
-│   │   ├── fetch-handler.ts  # API: /status, /errors, /budgets, /workers, /plan, /usage, /self-health + admin cron triggers + GitHub webhooks
+│   │   ├── fetch-handler.ts  # API: /status, /errors, /budgets, /workers, /plan, /usage, /usage/ai-gateway, /protection, /self-health + admin cron triggers + GitHub webhooks
 │   │   ├── self-monitor.ts   # Self-monitoring: cron tracking, error counts, AE telemetry, staleness detection
 │   │   ├── account/          # Account-level concerns (plan detection, billing period, allowances)
 │   │   ├── crons/            # Cron handlers (metrics, usage collection, budgets, gaps, discovery)
@@ -93,7 +93,7 @@ cf-monitor/
 │   │
 │   └── cli/                  # CLI: npx cf-monitor <command>
 │       ├── index.ts          # Commander setup
-│       ├── commands/          # init, deploy, wire, status, coverage, secret, config-sync, upgrade, migrate
+│       ├── commands/          # init, deploy, wire, status, coverage, secret, config-sync, upgrade, migrate, usage, probe-billing, probe-alerting, protection
 │       ├── wrangler-generator.ts
 │       └── cloudflare-api.ts
 │
@@ -113,7 +113,7 @@ cf-monitor/
 │   └── faq/faq.md            # Marketing-site FAQPage source — DO NOT delete or rename
 │                             # See .claude/rules/docs-faq.md for editorial rules
 │
-└── tests/                    # 365 unit tests + 53 integration tests
+└── tests/                    # 461 unit tests + 53 integration tests
     ├── helpers/               # Mock KV, AE, env, request factories
     ├── sdk/                   # monitor, proxy, metrics, detection, circuit-breaker
     ├── worker/                # tail, fetch, scheduled, config, ae-client, crons, errors
@@ -171,9 +171,9 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 |---------|----------|---------|
 | `tail()` | Real-time | Error capture from all tailed workers |
 | `scheduled()` | `*/15 * * * *` | Gap detection, cost spike detection |
-| `scheduled()` | `0 * * * *` | CF GraphQL metrics, account usage collection, budget enforcement (daily+monthly), synthetic CB health |
-| `scheduled()` | `0 0 * * *` | Daily rollup + warning digest, worker discovery |
-| `fetch()` | On-demand | API: /status, /errors, /budgets, /workers, /plan, /usage, /self-health, /_health, /admin/cron/*, /webhooks/github |
+| `scheduled()` | `0 * * * *` | CF GraphQL metrics, account usage collection, AI Gateway usage collection, queue realtime backlog collection, budget enforcement (daily+monthly), synthetic CB health |
+| `scheduled()` | `0 0 * * *` | Daily rollup + warning digest, worker discovery, Pages projects discovery, Vectorize indexes discovery |
+| `fetch()` | On-demand | API: /status, /errors, /budgets, /workers, /plan, /usage, /usage/ai-gateway, /protection, /self-health, /_health, /admin/cron/*, /webhooks/github |
 
 ### Storage Model
 
@@ -201,6 +201,11 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | `config:plan` | Detected CF plan (free/paid), 24hr TTL |
 | `config:billing_period` | Billing period JSON, 32d TTL |
 | `usage:account:{date}` | Daily per-service usage snapshot, 32d TTL |
+| `usage:account:ai-gateway:{date}` | Daily AI Gateway aggregate (gateway/provider/model), 32d TTL |
+| `usage:queue:realtime:{date}` | Hourly queue backlog snapshot (in-progress), 32d TTL |
+| `usage:pages:discovery:{date}` | Daily Pages project discovery (in-progress), 32d TTL |
+| `usage:vectorize:discovery:{date}` | Daily Vectorize index metadata (in-progress), 32d TTL |
+| `config:budget_alert` | CF Budget Alert subscription status, no TTL (in-progress) |
 | `self:v2:cron:` | Per-handler cron timestamps (v0.3.7+), 48hr TTL |
 | `self:v1:cron:last_run` | Legacy cron blob (v0.3.6 and earlier, read as fallback), 48hr TTL |
 | `self:v1:error:` | Per-handler daily error counts, 48hr TTL |
@@ -225,6 +230,15 @@ Consumer Workers ──(tail)──> cf-monitor worker ──> GitHub Issues
 | Plan allowances | `src/worker/account/plan-allowances.ts` — free/paid allowance tables |
 | Usage collection | `src/worker/crons/collect-account-usage.ts` — hourly GraphQL for 5 services (Workers, D1, KV, R2, DO) |
 | Self-monitoring | `src/worker/self-monitor.ts` — cron tracking, error counts, AE telemetry, /self-health, staleness |
+| AI Gateway usage | `src/worker/crons/collect-ai-gateway-usage.ts` — hourly REST log aggregation per (gateway/provider/model) |
+| R2 op classification | `src/worker/crons/r2-classification.ts` — S3-action → Class A / Class B / free / unknown (in-progress) |
+| Queue realtime | `src/worker/crons/collect-queue-realtime.ts` — hourly per-queue backlog REST poll (in-progress) |
+| Pages discovery | `src/worker/crons/discover-pages-projects.ts` — daily Pages projects REST list (in-progress) |
+| Vectorize discovery | `src/worker/crons/discover-vectorize-indexes.ts` — daily Vectorize index metadata REST list (in-progress) |
+| Protection coverage | `src/worker/protection-coverage.ts` — audit-only report engine + heuristic 0-100 score (in-progress) |
+| Billing probe | `src/cli/probe-billing.ts` + `src/cli/commands/probe-billing.ts` — read-only `/billing/*` probe (in-progress) |
+| Alerting probe | `src/cli/probe-alerting.ts` + `src/cli/commands/probe-alerting.ts` — read-only `/alerting/v3/*` probe (in-progress) |
+| Budget Alert | `src/cli/budget-alert.ts` — CF Notifications policy POST for `--register-budget-alert` (in-progress) |
 | CLI entry | `src/cli/index.ts` — commander setup |
 
 ---
@@ -380,3 +394,15 @@ See https://github.com/littlebearapps/cf-monitor/issues for planned features.
 
 **Remaining features:**
 - #8, #9, #10 — AI optional features (pattern discovery, health reports, coverage auditor) — stubs created in `src/worker/optional/`
+
+**In-progress (uncommitted, on `feature/ai-gateway-usage-collection` branch)** — will be folded into the next versioned release section when shipped:
+
+- Cloudflare API research pass — `docs/research/cloudflare-api-{surface.md,surface.json,probe-results.md,research-summary.md}` updated with the 2026-05-27/05-28 live probes (Scout + Platform-Billing-Read).
+- R2 classifier (`src/worker/crons/r2-classification.ts`) — reclassified `ListBucket` from Class B → `unknown` (warned, not counted) pending invoice evidence. Free ops (`DeleteObject` etc.) excluded.
+- Queue / Pages / Vectorize discovery — 3 new hourly+daily collectors with confidence labels in `/usage`.
+- Confidence labels in `/usage` — top-level `confidence: UsageConfidence` map (backward-compat additive); see `docs/research/billing-endpoints-follow-up.md` for vocabulary.
+- Billing/Alerting read-only probes — `cf-monitor probe billing` + `cf-monitor probe alerting`. `/billing/usage` confirmed NOT the Billable Usage API; `/billing/history` is billing-authoritative past invoices (not yet wired).
+- Budget Alert opt-in — `cf-monitor init --register-budget-alert <threshold>` POSTs to `/alerting/v3/policies` with `alert_type: 'billing_budget_alert'`. NOTE: threshold itself is set in the dashboard, not the API.
+- Protection Coverage — `GET /protection` + `npx cf-monitor protection` audit endpoint with 10 finding categories + heuristic 0-100 score.
+- Read endpoint auth (Phase 9) — `/protection` now requires `Authorization: Bearer $ADMIN_TOKEN` by default. Other read endpoints (`/usage`, `/workers`, etc.) stay public unless `CF_MONITOR_REQUIRE_AUTH_FOR_READS=true` is set. `/_health` is always public (Gatus). Optional `CF_MONITOR_PROTECTION_PUBLIC=redacted` gives a redacted public variant. CLI commands send `Authorization: Bearer $CF_MONITOR_ADMIN_TOKEN` when the env var is set.
+- Tests: 365 → 461.
